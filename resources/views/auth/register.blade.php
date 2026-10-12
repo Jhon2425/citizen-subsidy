@@ -17,8 +17,20 @@
              showPassword: false,
              showConfirm: false,
 
+             email: @js(old('email', '')),
              password: '',
              confirm: '',
+
+             // Email: Gmail addresses only
+             get emailValid()   { return /^[A-Za-z0-9._%+\-]+@gmail\.com$/i.test(this.email); },
+             get emailInvalid() { return this.email.length > 0 && !this.emailValid; },
+
+             // Password rules
+             get hasLength() { return this.password.length >= 8; },
+             get hasLower()  { return /[a-z]/.test(this.password); },
+             get hasUpper()  { return /[A-Z]/.test(this.password); },
+             get hasNumber() { return /\d/.test(this.password); },
+             get passwordValid() { return this.hasLength && this.hasLower && this.hasUpper && this.hasNumber; },
 
              // 0 to 4, one point each for: 8+ characters, upper and lower case, a number, a symbol.
              get score() {
@@ -36,7 +48,10 @@
                  return ['', 'bg-[#924337]', 'bg-[#bb8f63]', 'bg-[#4f9033]', 'bg-[#2f6b1f]'][this.score];
              },
              get matches() { return this.confirm.length > 0 && this.password === this.confirm; },
-             get mismatch() { return this.confirm.length > 0 && this.password !== this.confirm; }
+             get mismatch() { return this.confirm.length > 0 && this.password !== this.confirm; },
+
+             // Submit is enabled only when everything is valid
+             get canSubmit() { return this.emailValid && this.passwordValid && this.matches; }
          }">
 
         <div class="bg-white rounded-2xl border border-gray-200 shadow-xl shadow-[#1f4a12]/10 overflow-hidden">
@@ -142,7 +157,7 @@
                         </div>
                     </div>
 
-                    {{-- Email --}}
+                    {{-- Email (Gmail only) --}}
                     <div>
                         <x-label for="email" value="{{ __('Email') }}" class="text-sm font-semibold text-gray-700" />
 
@@ -158,13 +173,21 @@
                             <x-input id="email"
                                      class="block w-full pl-10 rounded-lg border-gray-300 shadow-sm
                                             focus:!border-[#2f6b1f] focus:!ring-[#2f6b1f] focus:!ring-1"
-                                     type="email" name="email" :value="old('email')"
+                                     type="email" name="email"
+                                     x-model="email"
+                                     x-bind:class="emailInvalid ? '!border-[#924337]' : ''"
+                                     pattern="[A-Za-z0-9._%+\-]+@gmail\.com"
+                                     title="Only @gmail.com addresses are accepted"
                                      required autocomplete="username"
-                                     placeholder="you@example.com" />
+                                     placeholder="you@gmail.com" />
                         </div>
+
+                        <p x-show="emailInvalid" x-cloak class="mt-1.5 text-xs font-medium text-[#924337]">
+                            Only @gmail.com email addresses are accepted.
+                        </p>
                     </div>
 
-                    {{-- Password + live strength meter --}}
+                    {{-- Password + live strength meter + requirements --}}
                     <div>
                         <x-label for="password" value="{{ __('Password') }}" class="text-sm font-semibold text-gray-700" />
 
@@ -218,6 +241,21 @@
                                 <span class="font-semibold" :class="strengthText" x-text="strengthLabel"></span>
                             </p>
                         </div>
+
+                        <ul class="mt-2 space-y-1 text-xs" x-show="password.length > 0" x-cloak>
+                            <li :class="hasLength ? 'text-[#2f6b1f]' : 'text-gray-500'">
+                                <span x-text="hasLength ? '✓' : '○'"></span> At least 8 characters
+                            </li>
+                            <li :class="hasUpper ? 'text-[#2f6b1f]' : 'text-gray-500'">
+                                <span x-text="hasUpper ? '✓' : '○'"></span> One uppercase letter
+                            </li>
+                            <li :class="hasLower ? 'text-[#2f6b1f]' : 'text-gray-500'">
+                                <span x-text="hasLower ? '✓' : '○'"></span> One lowercase letter
+                            </li>
+                            <li :class="hasNumber ? 'text-[#2f6b1f]' : 'text-gray-500'">
+                                <span x-text="hasNumber ? '✓' : '○'"></span> One number
+                            </li>
+                        </ul>
                     </div>
 
                     {{-- Confirm password + live match hint --}}
@@ -282,9 +320,11 @@
                     @endif
 
                     <div class="pt-1">
-                        <x-button class="w-full justify-center !bg-[#2f6b1f] hover:!bg-[#245217] active:!bg-[#1f4a12]
-                                          focus:!bg-[#245217] focus:!ring-[#3d7a26] focus:!ring-offset-2
-                                          !rounded-lg py-3 font-semibold tracking-wide shadow-sm">
+                        <x-button x-bind:disabled="!canSubmit"
+                                  class="w-full justify-center !bg-[#2f6b1f] hover:!bg-[#245217] active:!bg-[#1f4a12]
+                                         focus:!bg-[#245217] focus:!ring-[#3d7a26] focus:!ring-offset-2
+                                         !rounded-lg py-3 font-semibold tracking-wide shadow-sm
+                                         disabled:opacity-50 disabled:cursor-not-allowed">
                             {{ __('Create account') }}
                         </x-button>
                     </div>

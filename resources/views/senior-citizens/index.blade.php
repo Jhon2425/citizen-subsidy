@@ -31,9 +31,12 @@
         ],
     ]);
 
+    $importErrors = $errors->getBag('import');
+
     $config = [
         'items'     => $items,
         'hasErrors' => $errors->any(),
+        'importHasErrors' => $importErrors->any(),
         'routes'    => [
             'regions'        => route('psgc.regions'),
             'provinces'      => url('/psgc/regions') . '/{code}/provinces',
@@ -66,10 +69,21 @@
 <p class="mt-1 max-w-xl text-sm text-white/80">Master list of approved senior citizens. Click a name to view or edit a record.</p>
 <p class="mt-4 text-sm text-white/90">{{ $seniors->total() }} {{ \Illuminate\Support\Str::plural('senior citizen', $seniors->total()) }} {{ request()->hasAny(['search', 'barangay']) ? 'match your filters' : 'in total' }}</p>
 </div>
+
+<div class="relative flex flex-wrap items-center gap-2">
+{{-- Import --}}
+<button type="button" x-on:click="openImport()"
+        class="inline-flex items-center gap-2 rounded-xl border border-white/40 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white">
+<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
+Import
+</button>
+
+{{-- Export --}}
 <a href="#" class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[oklch(38%_0.15_151.711)] shadow-sm transition hover:bg-green-50">
 <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>
 Export
 </a>
+</div>
 </div>
 </div>
 
@@ -91,6 +105,26 @@ Export
 <button type="button" x-on:click="show = false" class="text-red-600 hover:text-red-800" aria-label="Dismiss">
 <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
 </button>
+</div>
+@endif
+
+{{-- Rows that were skipped during the last import --}}
+@if (session('import_errors'))
+<div x-data="{ show: true }" x-show="show" x-transition class="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+<div class="flex items-start gap-3">
+<svg class="mt-0.5 size-5 shrink-0 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" /></svg>
+<div class="min-w-0 flex-1">
+<p class="text-sm font-semibold text-amber-900">Some rows were skipped during import</p>
+<ul class="mt-2 max-h-40 list-disc space-y-1 overflow-y-auto pl-5 text-sm text-amber-800">
+@foreach (session('import_errors') as $importError)
+<li>{{ $importError }}</li>
+@endforeach
+</ul>
+</div>
+<button type="button" x-on:click="show = false" class="text-amber-600 hover:text-amber-800" aria-label="Dismiss">
+<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+</button>
+</div>
 </div>
 @endif
 
@@ -196,6 +230,87 @@ Export
 <div class="border-t border-gray-100 px-6 py-4">{{ $seniors->links() }}</div>
 @endif
 
+</div>
+
+
+{{-- =====================================================
+    IMPORT MODAL
+====================================================== --}}
+<div x-show="importOpen" x-cloak style="display: none;" x-on:keydown.escape.window="if (!importing) importOpen = false"
+     class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:items-center sm:p-6" role="dialog" aria-modal="true">
+<div x-show="importOpen" x-transition.opacity x-on:click="if (!importing) importOpen = false" class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm"></div>
+
+<div x-show="importOpen" x-transition.scale.95 x-on:click.stop class="relative w-full max-w-lg rounded-2xl bg-white shadow-xl">
+
+<div class="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+<div>
+<h2 class="text-lg font-bold text-gray-900">Import senior citizens</h2>
+<p class="text-sm text-gray-500">Upload an Excel or CSV file to add records in bulk.</p>
+</div>
+<button type="button" x-on:click="importOpen = false" x-bind:disabled="importing" class="rounded-full p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600" aria-label="Close">
+<svg class="size-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+</button>
+</div>
+
+<form method="POST" action="{{ route('senior-citizens.import') }}" enctype="multipart/form-data" x-on:submit="importing = true">
+@csrf
+
+<div class="space-y-5 px-6 py-5">
+
+@if ($importErrors->any())
+<div class="rounded-xl border border-red-200 bg-red-50 p-4">
+<ul class="list-disc space-y-1 pl-5 text-sm text-red-700">
+@foreach ($importErrors->all() as $error)
+<li>{{ $error }}</li>
+@endforeach
+</ul>
+</div>
+@endif
+
+{{-- Expected columns --}}
+<div class="rounded-xl bg-gray-50 p-4 text-sm text-gray-700">
+<div class="flex items-start justify-between gap-3">
+<p class="font-semibold text-gray-900">Required columns (first row)</p>
+<a href="{{ route('senior-citizens.import.template') }}" class="shrink-0 text-xs font-semibold text-[oklch(45%_0.15_151.711)] hover:underline">Download template</a>
+</div>
+<p class="mt-2 font-mono text-xs leading-relaxed text-gray-600">list_name, gender, birth_date, contact_number, address, barangay, municipality, province, region</p>
+<ul class="mt-3 list-disc space-y-1 pl-5 text-xs text-gray-500">
+<li><span class="font-medium">list_name</span>, <span class="font-medium">gender</span>, <span class="font-medium">birth_date</span>, <span class="font-medium">barangay</span> and <span class="font-medium">municipality</span> are required.</li>
+<li>Gender: male or female. Birth date: for example 1950-03-25.</li>
+<li>Rows with the same name and birth date as an existing record are skipped.</li>
+</ul>
+</div>
+
+{{-- File picker --}}
+<div>
+<label for="import_file" class="{{ $label }}">Excel or CSV file</label>
+<div class="relative mt-1 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition"
+     x-bind:class="dragging ? 'border-[oklch(45%_0.15_151.711)] bg-green-50' : 'border-gray-300 hover:border-gray-400'">
+<svg class="size-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+<p class="mt-2 text-sm text-gray-600" x-show="!fileName">Drag a file here or <span class="font-semibold text-[oklch(45%_0.15_151.711)]">browse</span></p>
+<p class="mt-2 text-sm font-medium text-gray-900" x-show="fileName" x-cloak x-text="fileName"></p>
+<p class="mt-1 text-xs text-gray-400">.xlsx, .xls or .csv, up to 5 MB</p>
+
+<input type="file" id="import_file" name="file" accept=".xlsx,.xls,.csv" required
+       class="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+       x-on:change="fileName = $event.target.files[0] ? $event.target.files[0].name : ''"
+       x-on:dragenter="dragging = true" x-on:dragleave="dragging = false" x-on:drop="dragging = false">
+</div>
+</div>
+
+</div>
+
+<div class="flex items-center justify-end gap-3 border-t border-gray-100 px-6 py-4">
+<button type="button" x-on:click="importOpen = false" x-bind:disabled="importing" class="rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+<button type="submit" x-bind:disabled="importing || !fileName"
+        class="inline-flex items-center gap-2 rounded-xl bg-[oklch(45%_0.15_151.711)] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-[oklch(38%_0.15_151.711)] disabled:cursor-not-allowed disabled:opacity-60">
+<svg x-show="importing" x-cloak class="size-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+<span x-text="importing ? 'Importing…' : 'Import file'"></span>
+</button>
+</div>
+
+</form>
+</div>
 </div>
 
 
@@ -459,6 +574,19 @@ function seniorsPage(cfg) {
         viewItem: null,
         deceasedItem: null,
         marking: false,
+
+        // ---- import ----
+        importOpen: !!cfg.importHasErrors,
+        importing: false,
+        dragging: false,
+        fileName: '',
+
+        openImport() {
+            this.importing = false;
+            this.dragging = false;
+            this.fileName = '';
+            this.importOpen = true;
+        },
 
         editOpen: !!restoring,
         editId: restoring ? cfg.old.id : null,

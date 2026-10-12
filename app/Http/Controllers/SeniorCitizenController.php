@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Imports\SeniorCitizensImport;
 use App\Models\SeniorCitizen;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
+use Maatwebsite\Excel\Facades\Excel;
 
 class SeniorCitizenController extends Controller
 {
@@ -63,6 +65,64 @@ class SeniorCitizenController extends Controller
         SeniorCitizen::create($data);
 
         return back()->with('success', 'Senior citizen added successfully.');
+    }
+
+    /**
+     * Bulk-import senior citizens from an Excel / CSV file
+     * (Import modal on the master list).
+     */
+    public function import(Request $request)
+    {
+        // Named "import" bag so errors only reopen the import modal,
+        // not the edit modal.
+        $request->validateWithBag('import', [
+            'file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:5120'],
+        ], [
+            'file.required' => 'Please choose a file to import.',
+            'file.mimes'    => 'The file must be an .xlsx, .xls or .csv file.',
+            'file.max'      => 'The file may not be larger than 5 MB.',
+        ]);
+
+        $import = new SeniorCitizensImport();
+
+        try {
+            Excel::import($import, $request->file('file'));
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()->with('error', 'The file could not be read. Please use the template and try again.');
+        }
+
+        if ($import->imported === 0 && $import->skipped === 0) {
+            return back()->with('error', 'No rows were found in the file. Make sure the first row contains the column headings.');
+        }
+
+        return back()
+            ->with('success', "Import finished: {$import->imported} added, {$import->skipped} skipped.")
+            ->with('import_errors', array_slice($import->errors, 0, 20));
+    }
+
+    /**
+     * Downloadable CSV template that matches the import columns.
+     */
+    public function importTemplate()
+    {
+        $headers = [
+            'list_name', 'gender', 'birth_date', 'contact_number',
+            'address', 'barangay', 'municipality', 'province', 'region',
+        ];
+
+        $sample = [
+            'Dela Cruz, Juan', 'male', '1950-03-25', '09171234567',
+            '123 Rizal St.', 'Poblacion', 'Lipa City', 'Batangas', 'Region IV-A',
+        ];
+
+        return response()->streamDownload(function () use ($headers, $sample) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, $headers);
+            fputcsv($out, $sample);
+            fclose($out);
+        }, 'senior-citizens-template.csv', ['Content-Type' => 'text/csv']);
     }
 
     /**

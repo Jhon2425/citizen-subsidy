@@ -39,6 +39,13 @@ Route::middleware([
     Route::get('/senior-citizens', [SeniorCitizenController::class, 'index'])
         ->name('senior-citizens.index');
 
+    // Import (Excel / CSV). Keep these above any route with a {seniorCitizen} parameter.
+    Route::get('/senior-citizens/import-template', [SeniorCitizenController::class, 'importTemplate'])
+        ->name('senior-citizens.import.template');
+
+    Route::post('/senior-citizens/import', [SeniorCitizenController::class, 'import'])
+        ->name('senior-citizens.import');
+
     Route::post('/senior-citizens', [SeniorCitizenController::class, 'store'])
         ->name('senior-citizens.store');
 
