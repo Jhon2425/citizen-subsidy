@@ -32,6 +32,14 @@
     ];
 
     $currentStatus = request('status');
+
+    // Previous PSGC selection, restored after a validation error.
+    $oldPsgc = [
+        'region'       => old('region_code'),
+        'province'     => old('province_code'),
+        'municipality' => old('municipality_code'),
+        'barangay'     => old('barangay_code'),
+    ];
 @endphp
 
 <div x-data="{
@@ -582,21 +590,30 @@ Reason for <span x-text="formStatus"></span>
 @once
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // Each entry is tried in order: the public PSGC API straight from the browser
+    // first (no dependency on the server's outbound HTTP/SSL), then the Laravel route.
+    const PSGC = 'https://psgc.gitlab.io/api';
     const routes = {
-        regions:         '{{ route('psgc.regions') }}',
-        provinces:       (regionCode) => '{{ url('/psgc/regions') }}/' + regionCode + '/provinces',
-        citiesInRegion:  (regionCode) => '{{ url('/psgc/regions') }}/' + regionCode + '/cities',
-        cities:          (provinceCode) => '{{ url('/psgc/provinces') }}/' + provinceCode + '/cities',
-        barangays:       (cityCode) => '{{ url('/psgc/cities') }}/' + cityCode + '/barangays',
+        regions:         [PSGC + '/regions/',
+                          '{{ route('psgc.regions') }}'],
+        provinces:       (c) => [PSGC + '/regions/' + c + '/provinces/',
+                                 '{{ url('/psgc/regions') }}/' + c + '/provinces'],
+        citiesInRegion:  (c) => [PSGC + '/regions/' + c + '/cities-municipalities/',
+                                 '{{ url('/psgc/regions') }}/' + c + '/cities'],
+        cities:          (c) => [PSGC + '/provinces/' + c + '/cities-municipalities/',
+                                 '{{ url('/psgc/provinces') }}/' + c + '/cities'],
+        barangays:       (c) => [PSGC + '/cities-municipalities/' + c + '/barangays/',
+                                 '{{ url('/psgc/cities') }}/' + c + '/barangays'],
     };
 
     const fieldClass = @json($field);
 
-    /**
-     * Turns a <select> into a typeable, searchable dropdown. The real
-     * <select> stays in the DOM (hidden) as the source of truth.
-     * Call select._refresh() after changing its options or disabled state.
-     */
+    // Values from the last submit (so a validation error doesn't wipe the address)
+    const oldValues = @json($oldPsgc);
+
+    /* ------------------------------------------------------------------
+     * Searchable dropdown (wraps a hidden <select>)
+     * ------------------------------------------------------------------ */
     function makeSearchable(select) {
         const wrap = document.createElement('div');
         wrap.className = 'relative';
@@ -615,8 +632,12 @@ document.addEventListener('DOMContentLoaded', function () {
         const list = document.createElement('ul');
         list.className = 'absolute z-[70] mt-1 hidden max-h-56 w-full overflow-auto rounded-xl border border-gray-200 bg-white py-1 text-sm shadow-lg';
 
+        const err = document.createElement('p');
+        err.className = 'mt-1 hidden text-xs text-red-600';
+
         wrap.appendChild(input);
         wrap.appendChild(list);
+        wrap.appendChild(err);
 
         let shown = [];
         let active = -1;
@@ -629,9 +650,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const isOpen = () => !list.classList.contains('hidden');
 
         function highlight() {
-            Array.from(list.children).forEach((li, i) => {
-                li.classList.toggle('bg-gray-100', i === active);
-            });
+            Array.from(list.children).forEach((li, i) => li.classList.toggle('bg-gray-100', i === active));
             if (list.children[active]) list.children[active].scrollIntoView({ block: 'nearest' });
         }
 
@@ -681,6 +700,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         input.addEventListener('focus', () => { input.select(); open(''); });
+        input.addEventListener('click', () => { if (!isOpen()) open(''); });
         input.addEventListener('input', () => open(input.value));
         input.addEventListener('blur', () => { close(); input.value = currentLabel(); });
         input.addEventListener('keydown', function (e) {
@@ -710,6 +730,22 @@ document.addEventListener('DOMContentLoaded', function () {
             input.required = select.dataset.required === 'true';
         };
 
+        // Inline error with a Retry button, so a failed request is never a dead end
+        select._setError = function (message, retry) {
+            err.innerHTML = '';
+            if (!message) { err.classList.add('hidden'); return; }
+            err.appendChild(document.createTextNode(message + ' '));
+            if (retry) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'font-semibold underline';
+                btn.textContent = 'Retry';
+                btn.addEventListener('click', retry);
+                err.appendChild(btn);
+            }
+            err.classList.remove('hidden');
+        };
+
         select._refresh();
     }
 
@@ -719,6 +755,9 @@ document.addEventListener('DOMContentLoaded', function () {
         if (select._refresh) select._refresh();
     }
 
+    /* ------------------------------------------------------------------
+     * Elements
+     * ------------------------------------------------------------------ */
     const regionSelect       = document.getElementById('region_code');
     const provinceWrapper    = document.getElementById('province-wrapper');
     const provinceSelect     = document.getElementById('province_code');
@@ -732,28 +771,76 @@ document.addEventListener('DOMContentLoaded', function () {
 
     [regionSelect, provinceSelect, municipalitySelect, barangaySelect].forEach(makeSearchable);
 
+    /* ------------------------------------------------------------------
+     * Data helpers
+     * ------------------------------------------------------------------ */
+    const pick = (o, keys) => {
+        for (const k of keys) if (o && o[k] != null && o[k] !== '') return o[k];
+        return null;
+    };
+
+    // Accepts {code,name} or common PSGC variants (provinceCode, cityName, brgyName, ...)
+    function normalize(items) {
+        const out = items.map((i) => ({
+            code: String(pick(i, ['code', 'psgc_code', 'psgcCode', 'regionCode', 'provinceCode', 'cityCode',
+                                  'municipalityCode', 'citymunCode', 'barangayCode', 'brgyCode', 'id']) ?? ''),
+            name: String(pick(i, ['name', 'regionName', 'provinceName', 'cityName', 'municipalityName',
+                                  'citymunName', 'barangayName', 'brgyName', 'barangay', 'city', 'province', 'region']) ?? ''),
+        })).filter((i) => i.code && i.name);
+
+        if (items.length && out.length === 0) {
+            console.warn('PSGC: response items have unexpected keys. First item:', items[0]);
+        }
+        return out;
+    }
+
+    // FIX: PsgcController@provinces returns { provinces: [...], skip_province: bool },
+    // so unwrap `provinces` as well as plain arrays and { data: [...] }.
     function extractArray(json) {
         if (Array.isArray(json)) return json;
+        if (json && Array.isArray(json.provinces)) return json.provinces;
         if (json && Array.isArray(json.data)) return json.data;
+        if (json && json.data && Array.isArray(json.data.data)) return json.data.data;
         return [];
     }
 
-    function fetchJson(url, label) {
-        return fetch(url)
-            .then((r) => {
+    async function fetchJson(urls, label) {
+        const list = Array.isArray(urls) ? urls : [urls];
+        let lastError;
+
+        for (let i = 0; i < list.length; i++) {
+            const url = list[i];
+            try {
+                const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
                 if (!r.ok) throw new Error(label + ': HTTP ' + r.status + ' from ' + url);
-                return r.json();
-            })
-            .then(extractArray)
-            .catch((err) => {
-                console.error(err);
-                throw err;
-            });
+                const items = normalize(extractArray(await r.json()));
+
+                // PsgcService returns [] when ITS request fails, so an empty list from the
+                // Laravel fallback can't be trusted. Only the public API can say "truly empty".
+                if (items.length === 0 && i > 0) {
+                    throw new Error(label + ': empty response from fallback ' + url);
+                }
+
+                return items.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+            } catch (e) {
+                console.warn('PSGC: ' + url + ' failed, trying next source if any.', e);
+                lastError = e;
+            }
+        }
+
+        console.error('PSGC: all sources failed for ' + label, lastError);
+        throw lastError;
     }
+
+    // Ignore responses from requests that were superseded
+    const tokens = new Map();
+    const begin = (select) => { const t = (tokens.get(select) || 0) + 1; tokens.set(select, t); return t; };
+    const isStale = (select, t) => tokens.get(select) !== t;
 
     function resetSelect(select, placeholder, disabled = true) {
         select.innerHTML = '<option value="">' + placeholder + '</option>';
         select.disabled = disabled;
+        if (select._setError) select._setError(null);
         if (select._refresh) select._refresh();
     }
 
@@ -766,6 +853,7 @@ document.addEventListener('DOMContentLoaded', function () {
             select.appendChild(opt);
         });
         select.disabled = items.length === 0;
+        if (select._setError) select._setError(null);
         if (select._refresh) select._refresh();
     }
 
@@ -774,91 +862,137 @@ document.addEventListener('DOMContentLoaded', function () {
         hiddenInput.value = (opt && opt.value) ? opt.textContent : '';
     }
 
-    // 1) Regions
-    fetchJson(routes.regions, 'regions')
-        .then((regions) => render(regionSelect, regions, 'Select a region'))
-        .catch(() => resetSelect(regionSelect, 'Could not load regions', true));
+    // Loads items into a select. Returns the items, or null on error / superseded request.
+    async function loadInto(select, url, placeholder, label) {
+        const t = begin(select);
+        resetSelect(select, 'Loading…');
+        try {
+            const items = await fetchJson(url, label);
+            if (isStale(select, t)) return null;
+            render(select, items, placeholder);
+            return items;
+        } catch (e) {
+            if (isStale(select, t)) return null;
+            resetSelect(select, 'Could not load ' + label);
+            select._setError('Could not load ' + label + '.', () => loadInto(select, url, placeholder, label));
+            return null;
+        }
+    }
 
-    // 2) Region -> Province (or straight to cities if the region has none, e.g. NCR)
-    regionSelect.addEventListener('change', function () {
+    // Select a value only if that option exists (used when restoring old input)
+    function setIfExists(select, value) {
+        if (!value) return false;
+        const exists = Array.from(select.options).some((o) => o.value === String(value));
+        if (!exists) return false;
+        select.value = String(value);
+        if (select._refresh) select._refresh();
+        return true;
+    }
+
+    /* ------------------------------------------------------------------
+     * Cascade handlers (restore = old values to re-apply, or undefined)
+     * ------------------------------------------------------------------ */
+    async function onRegion(restore) {
         syncHiddenName(regionSelect, regionName);
-        resetSelect(provinceSelect, 'Loading…');
-        resetSelect(municipalitySelect, 'Select a province first');
-        resetSelect(barangaySelect, 'Select a city/municipality first');
+        provinceName.value = '';
         municipalityName.value = '';
         barangayName.value = '';
-        provinceName.value = '';
+        begin(provinceSelect); begin(municipalitySelect); begin(barangaySelect);
+        resetSelect(municipalitySelect, 'Select a province first');
+        resetSelect(barangaySelect, 'Select a city/municipality first');
 
-        if (!regionSelect.value) {
+        const code = regionSelect.value;
+        if (!code) {
             resetSelect(provinceSelect, 'Select a region first');
             provinceWrapper.classList.remove('hidden');
             setRequired(provinceSelect, false);
             return;
         }
 
-        fetchJson(routes.provinces(regionSelect.value), 'provinces')
-            .then((provinces) => {
-                if (provinces.length === 0) {
-                    provinceWrapper.classList.add('hidden');
-                    setRequired(provinceSelect, false);
-                    fetchJson(routes.citiesInRegion(regionSelect.value), 'cities-in-region')
-                        .then((cities) => render(municipalitySelect, cities, 'Select a city/municipality'))
-                        .catch(() => resetSelect(municipalitySelect, 'Could not load cities', true));
-                } else {
-                    provinceWrapper.classList.remove('hidden');
-                    render(provinceSelect, provinces, 'Select a province');
-                    setRequired(provinceSelect, true);
-                }
-            })
-            .catch(() => resetSelect(provinceSelect, 'Could not load provinces', true));
-    });
+        const provinces = await loadInto(provinceSelect, routes.provinces(code), 'Select a province', 'provinces');
+        if (provinces === null || regionSelect.value !== code) return;
 
-    // 3) Province -> City/Municipality
-    provinceSelect.addEventListener('change', function () {
+        if (provinces.length === 0) {
+            // No provinces (e.g. NCR): go straight to cities
+            // Keep the field visible but disabled so it never "disappears".
+            provinceWrapper.classList.remove('hidden');
+            setRequired(provinceSelect, false);
+            resetSelect(provinceSelect, 'Not applicable (no provinces)');
+            const cities = await loadInto(municipalitySelect, routes.citiesInRegion(code), 'Select a city/municipality', 'cities');
+            if (cities && regionSelect.value === code && restore && setIfExists(municipalitySelect, restore.municipality)) {
+                await onMunicipality(restore);
+            }
+        } else {
+            provinceWrapper.classList.remove('hidden');
+            setRequired(provinceSelect, true);
+            if (restore && setIfExists(provinceSelect, restore.province)) {
+                await onProvince(restore);
+            }
+        }
+    }
+
+    async function onProvince(restore) {
         syncHiddenName(provinceSelect, provinceName);
-        resetSelect(municipalitySelect, 'Loading…');
-        resetSelect(barangaySelect, 'Select a city/municipality first');
         municipalityName.value = '';
         barangayName.value = '';
+        begin(barangaySelect);
+        resetSelect(barangaySelect, 'Select a city/municipality first');
 
-        if (!provinceSelect.value) {
+        const code = provinceSelect.value;
+        if (!code) {
+            begin(municipalitySelect);
             resetSelect(municipalitySelect, 'Select a province first');
             return;
         }
 
-        fetchJson(routes.cities(provinceSelect.value), 'cities')
-            .then((cities) => render(municipalitySelect, cities, 'Select a city/municipality'))
-            .catch(() => resetSelect(municipalitySelect, 'Could not load cities', true));
-    });
+        const cities = await loadInto(municipalitySelect, routes.cities(code), 'Select a city/municipality', 'cities');
+        if (cities && provinceSelect.value === code && restore && setIfExists(municipalitySelect, restore.municipality)) {
+            await onMunicipality(restore);
+        }
+    }
 
-    // 4) City/Municipality -> Barangay
-    municipalitySelect.addEventListener('change', function () {
+    async function onMunicipality(restore) {
         syncHiddenName(municipalitySelect, municipalityName);
-        resetSelect(barangaySelect, 'Loading…');
         barangayName.value = '';
 
-        if (!municipalitySelect.value) {
+        const code = municipalitySelect.value;
+        if (!code) {
+            begin(barangaySelect);
             resetSelect(barangaySelect, 'Select a city/municipality first');
             return;
         }
 
-        fetchJson(routes.barangays(municipalitySelect.value), 'barangays')
-            .then((barangays) => render(barangaySelect, barangays, 'Select a barangay'))
-            .catch(() => resetSelect(barangaySelect, 'Could not load barangays', true));
-    });
+        const barangays = await loadInto(barangaySelect, routes.barangays(code), 'Select a barangay', 'barangays');
+        if (barangays && municipalitySelect.value === code && restore && setIfExists(barangaySelect, restore.barangay)) {
+            syncHiddenName(barangaySelect, barangayName);
+        }
+    }
 
-    barangaySelect.addEventListener('change', function () {
-        syncHiddenName(barangaySelect, barangayName);
-    });
+    regionSelect.addEventListener('change', () => onRegion());
+    provinceSelect.addEventListener('change', () => onProvince());
+    municipalitySelect.addEventListener('change', () => onMunicipality());
+    barangaySelect.addEventListener('change', () => syncHiddenName(barangaySelect, barangayName));
 
-    // Birth date: Month / Day / Year selects feeding a hidden `birth_date`.
+    /* ------------------------------------------------------------------
+     * Initial load: regions (and restore old selection if any)
+     * ------------------------------------------------------------------ */
+    (async function init() {
+        const regions = await loadInto(regionSelect, routes.regions, 'Select a region', 'regions');
+        if (regions && setIfExists(regionSelect, oldValues.region)) {
+            await onRegion(oldValues);
+        }
+    })();
+
+    /* ------------------------------------------------------------------
+     * Birth date: Month / Day / Year selects feeding a hidden `birth_date`
+     * ------------------------------------------------------------------ */
     const monthSelect      = document.getElementById('birth_month');
     const daySelect        = document.getElementById('birth_day');
     const yearSelect       = document.getElementById('birth_year');
     const birthDateHidden  = document.getElementById('birth_date');
 
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-                         'July', 'August', 'September', 'October', 'November', 'December'];
+                        'July', 'August', 'September', 'October', 'November', 'December'];
 
     monthNames.forEach(function (name, index) {
         const opt = document.createElement('option');

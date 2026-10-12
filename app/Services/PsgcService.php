@@ -69,47 +69,79 @@ class PsgcService
     }
 
     /**
-     * Fetch, normalise and cache a PSGC endpoint.
+     * Return a cached PSGC endpoint, or fetch and cache it.
      *
-     * Returns an empty array on failure rather than throwing, so a
-     * PSGC outage degrades the form instead of 500-ing on a clerk.
+     * Only SUCCESSFUL responses are cached (an empty list is a valid
+     * success, e.g. NCR has no provinces). A failed request returns []
+     * but is never cached, so one network hiccup can't leave the form
+     * broken for the whole cache TTL.
      *
      * @return array<int, array{code: string, name: string}>
      */
     protected function fetch(string $cacheKey, string $path): array
     {
-        return Cache::remember($cacheKey, self::TTL, function () use ($path) {
-            try {
-                $response = Http::timeout(10)
-                    ->retry(2, 200)
-                    ->acceptJson()
-                    ->get(self::BASE . $path);
+        $cached = Cache::get($cacheKey);
 
-                if ($response->failed()) {
-                    Log::warning('PSGC request failed', [
-                        'path' => $path,
-                        'status' => $response->status(),
-                    ]);
+        if ($cached !== null) {
+            return $cached;
+        }
 
-                    return [];
-                }
+        $data = $this->request($path);
 
-                return collect($response->json())
-                    ->map(fn ($item) => [
-                        'code' => $item['code'],
-                        'name' => $item['name'],
-                    ])
-                    ->sortBy('name', SORT_NATURAL)
-                    ->values()
-                    ->all();
-            } catch (\Throwable $e) {
-                Log::error('PSGC request errored', [
+        if ($data === null) {
+            return [];
+        }
+
+        Cache::put($cacheKey, $data, self::TTL);
+
+        return $data;
+    }
+
+    /**
+     * Call the PSGC API. Returns null on any failure.
+     *
+     * @return array<int, array{code: string, name: string}>|null
+     */
+    protected function request(string $path): ?array
+    {
+        try {
+            $response = Http::timeout(10)
+                ->retry(2, 200)
+                ->acceptJson()
+                ->get(self::BASE . $path);
+
+            if ($response->failed()) {
+                Log::warning('PSGC request failed', [
                     'path' => $path,
-                    'message' => $e->getMessage(),
+                    'status' => $response->status(),
                 ]);
 
-                return [];
+                return null;
             }
-        });
+
+            $json = $response->json();
+
+            if (! is_array($json)) {
+                Log::warning('PSGC returned an unexpected payload', ['path' => $path]);
+
+                return null;
+            }
+
+            return collect($json)
+                ->map(fn ($item) => [
+                    'code' => $item['code'],
+                    'name' => $item['name'],
+                ])
+                ->sortBy('name', SORT_NATURAL)
+                ->values()
+                ->all();
+        } catch (\Throwable $e) {
+            Log::error('PSGC request errored', [
+                'path' => $path,
+                'message' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 }

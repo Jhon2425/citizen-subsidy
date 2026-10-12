@@ -14,7 +14,6 @@
 ====================================================== --}}
 <div class="relative mb-6 overflow-hidden rounded-2xl bg-[oklch(45%_0.15_151.711)] px-6 py-7 text-white sm:px-8 sm:py-9">
 <svg class="pointer-events-none absolute -right-6 -bottom-10 size-48 text-white/10" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 100-9 4.5 4.5 0 000 9zm0 2c-4.14 0-7.5 2.24-7.5 5v1.5h15V19c0-2.76-3.36-5-7.5-5z"/></svg>
-<div class="flex flex-wrap items-start justify-between gap-4">
 <div>
 <h1 class="text-2xl font-bold sm:text-3xl">Subsidy Releases</h1>
 <p class="mt-1 max-w-xl text-sm text-white/80">History of subsidies released to senior citizens.</p>
@@ -25,11 +24,6 @@
 Total released in this view:
 <span class="font-semibold tabular-nums">&#8369;{{ number_format($totalReleased, 2) }}</span>
 </p>
-</div>
-<a href="{{ route('subsidy-releases.create') }}" class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[oklch(38%_0.15_151.711)] shadow-sm transition hover:bg-green-50">
-<svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-New Release
-</a>
 </div>
 </div>
 

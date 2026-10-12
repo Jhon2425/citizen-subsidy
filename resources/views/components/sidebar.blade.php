@@ -84,8 +84,8 @@
 
 <a href="{{ route('dashboard') }}" class="flex items-center gap-3 min-w-0 flex-1" x-on:click="mobileSidebarOpen = false">
 
-<div class="w-12 h-12 rounded-full bg-white flex items-center justify-center shadow-md overflow-hidden shrink-0">
-<img src="{{ asset('build/LGU-LOGO.svg') }}" alt="{{ config('app.name', 'LGU') }} Logo" class="w-10 h-10 object-contain">
+<div class="size-12 shrink-0 rounded-full bg-white flex items-center justify-center shadow-md overflow-hidden">
+<img src="{{ asset('images/LGU-LOGO.svg') }}" alt="{{ config('app.name', 'LGU') }} Logo" class="size-full object-contain p-1" onerror="this.onerror=null;this.style.display='none';this.parentElement.innerHTML='<span class=&quot;text-sm font-bold text-[oklch(45%_0.15_151.711)]&quot;>LGU</span>'">
 </div>
 
 <div class="shell-label min-w-0" :class="{{ $labelBind }}" :aria-hidden="sidebarCollapsed.toString()">
