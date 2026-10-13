@@ -1,8 +1,45 @@
 <x-app-layout>
 
     {{-- =========================================================
-        DASHBOARD
+        DASHBOARD  (server-rendered cards + Chart.js charts)
+        No React / Vite entry needed.
     ========================================================== --}}
+
+    @php
+        $monthLabels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+        $dashboardPayload = [
+            'months' => $monthLabels,
+            'monthlyApplications' => collect(range(1, 12))
+                ->map(fn ($m) => (int) (optional($monthlyApplications->firstWhere('month', $m))->total ?? 0))
+                ->values(),
+            'monthlySubsidies' => collect(range(1, 12))
+                ->map(fn ($m) => (float) (optional($monthlySubsidies->firstWhere('month', $m))->total ?? 0))
+                ->values(),
+            'subsidyBreakdown' => $subsidyBreakdown
+                ->map(fn ($row) => ['name' => (string) $row->name, 'total' => (float) $row->total_amount])
+                ->filter(fn ($row) => $row['total'] > 0)
+                ->values(),
+            'status' => [
+                ['name' => 'Pending',          'value' => (int) $pendingApplications],
+                ['name' => 'For verification', 'value' => (int) $verificationApplications],
+                ['name' => 'Approved',         'value' => (int) $approvedApplications],
+                ['name' => 'Rejected',         'value' => (int) $rejectedApplications],
+            ],
+        ];
+
+        $cards = [
+            ['label' => 'Total Senior Citizens',      'value' => number_format($totalSeniorCitizens),
+             'hint' => 'Registered in the system',    'tone' => 'bg-indigo-50 text-indigo-600'],
+            ['label' => 'Active Beneficiaries',       'value' => number_format($activeBeneficiaries),
+             'hint' => number_format($approvedBeneficiaries) . ' approved', 'tone' => 'bg-emerald-50 text-emerald-600'],
+            ['label' => 'Pending Applications',       'value' => number_format($pendingApplications),
+             'hint' => 'Awaiting review',             'tone' => 'bg-amber-50 text-amber-600'],
+            ['label' => 'Total Subsidy Distributed',  'value' => '₱' . number_format((float) $totalSubsidyDistributed, 2),
+             'hint' => '₱' . number_format((float) $thisMonthSubsidy, 2) . ' this month (' . number_format($thisMonthReleases) . ' releases)',
+             'tone' => 'bg-sky-50 text-sky-600'],
+        ];
+    @endphp
 
     <div class="max-w-7xl mx-auto">
 
@@ -20,72 +57,107 @@
             </div>
         </div>
 
-        {{-- =====================================================
-            STAT CARDS + ANALYTICS — rendered by React/Redux.
-            All data below is computed once in DashboardController
-            and handed off as plain JSON; no client-side fetching.
-        ====================================================== --}}
-        @php
-            $dashboardPayload = [
-                'stats' => [
-                    'totalSeniorCitizens' => $totalSeniorCitizens,
-                    'activeBeneficiaries' => $activeBeneficiaries,
-                    'approvedBeneficiaries' => $approvedBeneficiaries,
-                    'pendingApplications' => $pendingApplications,
-                    'totalSubsidyDistributed' => (float) $totalSubsidyDistributed,
-                ],
-                'status' => [
-                    'pending' => $pendingApplications,
-                    'verification' => $verificationApplications,
-                    'approved' => $approvedApplications,
-                    'rejected' => $rejectedApplications,
-                ],
-                'thisMonth' => [
-                    'subsidy' => (float) $thisMonthSubsidy,
-                    'releases' => $thisMonthReleases,
-                ],
-                'monthlyApplications' => collect(range(1, 12))
-                    ->map(fn ($m) => (int) (optional($monthlyApplications->firstWhere('month', $m))->total ?? 0))
-                    ->values(),
-                'monthlySubsidies' => collect(range(1, 12))
-                    ->map(fn ($m) => (float) (optional($monthlySubsidies->firstWhere('month', $m))->total ?? 0))
-                    ->values(),
-                'subsidyBreakdown' => $subsidyBreakdown
-                    ->map(fn ($row) => ['name' => $row->name, 'total_amount' => (float) $row->total_amount])
-                    ->values(),
-            ];
-        @endphp
-
-        <div id="dashboard-root" class="mb-8">
-            {{-- Static placeholder shown until React mounts / while the bundle loads --}}
-            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
-                @for ($i = 0; $i < 4; $i++)
-                    <div class="rounded-xl bg-white p-6 ring-1 ring-gray-950/5 shadow-sm">
-                        <div class="flex items-start justify-between">
-                            <div class="h-3 w-24 rounded bg-gray-100 animate-pulse"></div>
-                            <div class="h-9 w-9 rounded-lg bg-gray-100 animate-pulse"></div>
-                        </div>
-                        <div class="h-7 w-20 rounded bg-gray-100 animate-pulse mt-4"></div>
-                        <div class="h-3 w-32 rounded bg-gray-100 animate-pulse mt-4"></div>
+        {{-- STAT CARDS --}}
+        <div class="mb-5 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            @foreach ($cards as $card)
+                <div class="rounded-xl bg-white p-6 ring-1 ring-gray-950/5 shadow-sm">
+                    <div class="flex items-start justify-between">
+                        <p class="text-sm font-medium text-gray-500">{{ $card['label'] }}</p>
+                        <span class="h-9 w-9 rounded-lg {{ $card['tone'] }}"></span>
                     </div>
-                @endfor
-            </div>
+                    <p class="mt-3 text-2xl font-bold tracking-tight text-gray-950">{{ $card['value'] }}</p>
+                    <p class="mt-2 text-xs text-gray-400">{{ $card['hint'] }}</p>
+                </div>
+            @endforeach
         </div>
 
+        {{-- CHARTS --}}
+        <div class="mb-8 grid grid-cols-1 gap-5 xl:grid-cols-2">
+            @foreach ([
+                ['id' => 'chartApplications', 'title' => 'Applications per Month',     'sub' => 'Applications received this year'],
+                ['id' => 'chartSubsidies',    'title' => 'Subsidy Released per Month', 'sub' => 'Amount released this year'],
+                ['id' => 'chartBreakdown',    'title' => 'Subsidy Breakdown',          'sub' => 'Total released per program'],
+                ['id' => 'chartStatus',       'title' => 'Application Status',         'sub' => 'All applications by status'],
+            ] as $chart)
+                <div class="rounded-xl bg-white p-6 ring-1 ring-gray-950/5 shadow-sm">
+                    <h3 class="text-base font-semibold text-gray-950">{{ $chart['title'] }}</h3>
+                    <p class="mb-4 text-sm text-gray-500">{{ $chart['sub'] }}</p>
+                    <div class="relative h-72" id="wrap-{{ $chart['id'] }}">
+                        <canvas id="{{ $chart['id'] }}"></canvas>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
         <script>
-            window.__DASHBOARD_DATA__ = @json($dashboardPayload);
+            (function () {
+                var data = @json($dashboardPayload);
+                var COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#ec4899'];
+                var peso = function (n) {
+                    return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(n || 0);
+                };
+
+                function empty(id, text) {
+                    var wrap = document.getElementById('wrap-' + id);
+                    wrap.innerHTML = '<div class="flex h-full items-center justify-center text-sm text-gray-400">' + text + '</div>';
+                }
+
+                if (typeof Chart === 'undefined') {
+                    ['chartApplications', 'chartSubsidies', 'chartBreakdown', 'chartStatus'].forEach(function (id) {
+                        empty(id, 'Chart library failed to load (check internet connection)');
+                    });
+                    return;
+                }
+
+                Chart.defaults.font.family = 'inherit';
+                var sum = function (arr) { return arr.reduce(function (a, b) { return a + b; }, 0); };
+
+                // Applications per month
+                if (sum(data.monthlyApplications) > 0) {
+                    new Chart(document.getElementById('chartApplications'), {
+                        type: 'bar',
+                        data: { labels: data.months, datasets: [{ label: 'Applications', data: data.monthlyApplications, backgroundColor: '#4f46e5', borderRadius: 4 }] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+                    });
+                } else { empty('chartApplications', 'No applications recorded this year'); }
+
+                // Subsidy per month
+                if (sum(data.monthlySubsidies) > 0) {
+                    new Chart(document.getElementById('chartSubsidies'), {
+                        type: 'line',
+                        data: { labels: data.months, datasets: [{ label: 'Released', data: data.monthlySubsidies, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.15)', fill: true, tension: 0.3 }] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: function (c) { return peso(c.parsed.y); } } } }, scales: { y: { beginAtZero: true } } }
+                    });
+                } else { empty('chartSubsidies', 'No subsidy releases recorded this year'); }
+
+                // Breakdown
+                if (data.subsidyBreakdown.length > 0) {
+                    new Chart(document.getElementById('chartBreakdown'), {
+                        type: 'doughnut',
+                        data: { labels: data.subsidyBreakdown.map(function (r) { return r.name; }), datasets: [{ data: data.subsidyBreakdown.map(function (r) { return r.total; }), backgroundColor: COLORS }] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: function (c) { return c.label + ': ' + peso(c.parsed); } } } } }
+                    });
+                } else { empty('chartBreakdown', 'No subsidy data to break down'); }
+
+                // Status
+                var statuses = data.status.filter(function (r) { return r.value > 0; });
+                if (statuses.length > 0) {
+                    new Chart(document.getElementById('chartStatus'), {
+                        type: 'doughnut',
+                        data: { labels: statuses.map(function (r) { return r.name; }), datasets: [{ data: statuses.map(function (r) { return r.value; }), backgroundColor: COLORS }] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+                    });
+                } else { empty('chartStatus', 'No applications yet'); }
+            })();
         </script>
 
-        {{-- =====================================================
-            RECENT ANNOUNCEMENTS — plain server-rendered list, no
-            client state needed, so this stays as Blade.
-        ====================================================== --}}
+        {{-- RECENT ANNOUNCEMENTS --}}
         <div class="rounded-xl bg-white ring-1 ring-gray-950/5 shadow-sm overflow-hidden">
 
             <div class="p-6 border-b border-gray-100 flex items-center justify-between gap-4">
                 <div class="flex items-center gap-3">
                     <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
-                        {{-- Megaphone: matches "announcements", not the calendar used elsewhere --}}
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 01-1.44-4.282m3.102.069a18.03 18.03 0 01-.59-4.59c0-1.586.205-3.124.59-4.59m0 9.18a23.848 23.848 0 018.835 2.535M10.34 6.66a23.847 23.847 0 008.835-2.535" />
                         </svg>
@@ -124,7 +196,6 @@
                     <div class="p-6 flex items-start justify-between gap-4 hover:bg-gray-50/60 transition-colors">
 
                         <div class="min-w-0 flex items-start gap-3">
-                            {{-- Document/notice icon — distinct from the megaphone used in the section header --}}
                             <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg {{ $style['icon'] }}">
                                 <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
