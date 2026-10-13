@@ -2,15 +2,20 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\SendAnnouncementSms;
 use App\Models\Announcement;
 use App\Models\SeniorCitizen;
 use App\Models\Subsidy;
+use App\Services\SemaphoreSmsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AnnouncementController extends Controller
 {
+    public function __construct(protected SemaphoreSmsService $sms)
+    {
+    }
+
     public function index()
     {
         $announcements = Announcement::with(['barangays', 'subsidy'])
@@ -100,17 +105,12 @@ class AnnouncementController extends Controller
         });
 
         if ($request->boolean('send_now')) {
-            SendAnnouncementSms::dispatch($announcement);
+            return $this->deliverAndRedirect($announcement, 'Announcement created');
         }
 
         return redirect()
             ->route('announcements.index')
-            ->with(
-                'success',
-                $request->boolean('send_now')
-                    ? 'Announcement created and SMS notifications are being sent.'
-                    : 'Announcement saved as draft.'
-            );
+            ->with('success', 'Announcement saved as draft.');
     }
 
     public function update(Request $request, Announcement $announcement)
@@ -157,17 +157,12 @@ class AnnouncementController extends Controller
         });
 
         if ($request->boolean('send_now')) {
-            SendAnnouncementSms::dispatch($announcement->fresh());
+            return $this->deliverAndRedirect($announcement->fresh(), 'Announcement updated');
         }
 
         return redirect()
             ->route('announcements.index')
-            ->with(
-                'success',
-                $request->boolean('send_now')
-                    ? 'Announcement updated and SMS notifications are being sent.'
-                    : 'Announcement updated.'
-            );
+            ->with('success', 'Announcement updated.');
     }
 
     public function destroy(Announcement $announcement)
@@ -187,11 +182,149 @@ class AnnouncementController extends Controller
     public function send(Announcement $announcement)
     {
         abort_if($announcement->status === 'sent', 400, 'Already sent.');
+        abort_if($announcement->status === 'sending', 409, 'This announcement is being sent right now.');
 
-        SendAnnouncementSms::dispatch($announcement);
-
-        return back()->with('success', 'Sending SMS notifications to senior citizens.');
+        return $this->deliverAndRedirect($announcement, 'Announcement');
     }
+
+    /* =====================================================
+        SMS DELIVERY (direct, no queue)
+    ====================================================== */
+
+    /**
+     * Send the announcement and redirect back with a success or error flash.
+     */
+    protected function deliverAndRedirect(Announcement $announcement, string $prefix)
+    {
+        $result = $this->deliver($announcement);
+
+        if ($result['sent'] > 0) {
+            $message = "{$prefix} and SMS sent to {$result['sent']} senior citizen(s).";
+
+            if ($result['failed'] > 0) {
+                $message .= " {$result['failed']} could not be reached.";
+            }
+
+            return redirect()
+                ->route('announcements.index')
+                ->with('success', $message);
+        }
+
+        // Nothing was attempted: no recipients matched.
+        if ($result['sent'] === 0 && $result['failed'] === 0 && empty($result['errors'])) {
+            return redirect()
+                ->route('announcements.index')
+                ->with('error', "{$prefix}, but no senior citizen with a valid contact number was found for the selected barangay(s).");
+        }
+
+        // Show the real reason (e.g. missing API key, no credits) instead of a generic message.
+        $reason = !empty($result['errors'])
+            ? ' Reason: ' . \Illuminate\Support\Str::limit((string) $result['errors'][0], 200)
+            : ' Check the logs and try again.';
+
+        return redirect()
+            ->route('announcements.index')
+            ->with('error', "{$prefix}, but the SMS could not be sent.{$reason}");
+    }
+
+    /**
+     * Send the announcement's message to its recipients through Semaphore
+     * and update status / sent_count / recipients_count.
+     *
+     * @return array{sent: int, failed: int, errors: array<int, string>}
+     */
+    protected function deliver(Announcement $announcement): array
+    {
+        // Sending many messages can take a while.
+        @set_time_limit(0);
+
+        $announcement->update(['status' => 'sending', 'sent_count' => 0]);
+
+        try {
+            $codes = $announcement->barangays()->pluck('barangay_code')->all();
+
+            // Numbers come from the senior citizen records, limited to the
+            // barangays selected on this announcement (all if none selected).
+            $rawNumbers = $this->recipientsQuery($codes)->pluck('contact_number');
+
+            $numbers = $rawNumbers
+                ->map(fn ($n) => $this->normalizeNumber($n))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            Log::info('Announcement SMS recipients', [
+                'announcement_id' => $announcement->id,
+                'barangay_codes' => $codes,
+                'records_found' => $rawNumbers->count(),
+                'valid_numbers' => count($numbers),
+                'dropped_invalid' => $rawNumbers->count() - count($numbers),
+            ]);
+
+            if (empty($numbers)) {
+                $announcement->update([
+                    'status' => 'failed',
+                    'recipients_count' => 0,
+                ]);
+
+                return ['sent' => 0, 'failed' => 0, 'errors' => []];
+            }
+
+            $result = $this->sms->sendBulk($numbers, $announcement->message);
+
+            if (!empty($result['errors'])) {
+                Log::error('Announcement SMS errors', [
+                    'announcement_id' => $announcement->id,
+                    'errors' => $result['errors'],
+                ]);
+            }
+
+            $announcement->update([
+                'sent_count' => $result['sent'],
+                'recipients_count' => count($numbers),
+                // "sent" if at least one message went through.
+                // Use `$result['failed'] === 0` to be stricter.
+                'status' => $result['sent'] > 0 ? 'sent' : 'failed',
+            ]);
+
+            return [
+                'sent' => $result['sent'],
+                'failed' => $result['failed'],
+                'errors' => $result['errors'] ?? [],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Announcement SMS delivery crashed', [
+                'announcement_id' => $announcement->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $announcement->update(['status' => 'failed']);
+
+            return ['sent' => 0, 'failed' => 0, 'errors' => [$e->getMessage()]];
+        }
+    }
+
+    /**
+     * Convert to Semaphore-friendly PH format (09XXXXXXXXX).
+     * Accepts 09XXXXXXXXX, 9XXXXXXXXX, 639XXXXXXXXX, +639XXXXXXXXX.
+     */
+    protected function normalizeNumber(?string $number): ?string
+    {
+        $n = preg_replace('/\D+/', '', (string) $number);
+
+        if (str_starts_with($n, '63') && strlen($n) === 12) {
+            $n = '0' . substr($n, 2);
+        } elseif (strlen($n) === 10 && str_starts_with($n, '9')) {
+            $n = '0' . $n;
+        }
+
+        return preg_match('/^09\d{9}$/', $n) ? $n : null;
+    }
+
+    /* =====================================================
+        HELPERS
+    ====================================================== */
 
     /**
      * Save the selected barangays for an announcement.

@@ -6,11 +6,12 @@
     // Expected from the controller:
     //   $year     int
     //   $years    Collection<int>
-    //   $counts   ['pending' => int, 'approved' => int, 'rejected' => int, 'total' => int]
-    //   $monthly  Collection of ['label','pending','approved','rejected','total'] (12 rows, Jan–Dec)
-    $total   = max($counts['total'], 0);
-    $peak    = max(1, (int) $monthly->max('total'));
-    $percent = fn (int $n) => $total > 0 ? round($n / $total * 100) : 0;
+    //   $counts   ['pending','approved','rejected','total','deceased' => int]
+    //   $monthly  Collection of ['label','pending','approved','rejected','total','deceased'] (12 rows, Jan–Dec)
+    $total         = max($counts['total'], 0);
+    $deceasedTotal = (int) ($counts['deceased'] ?? 0);
+    $peak          = max(1, (int) $monthly->max('total'));
+    $percent       = fn (int $n) => $total > 0 ? round($n / $total * 100) : 0;
 
     $cards = [
         ['key' => 'pending',  'label' => 'Pending',  'dot' => 'bg-yellow-500', 'pill' => 'bg-yellow-100 text-yellow-700', 'hint' => 'Waiting for review'],
@@ -29,7 +30,7 @@
 <div class="flex flex-wrap items-start justify-between gap-4">
 <div>
 <h1 class="text-2xl font-bold sm:text-3xl">Reports</h1>
-<p class="mt-1 max-w-xl text-sm text-white/80">Application headcounts by status and the number of applications added each month.</p>
+<p class="mt-1 max-w-xl text-sm text-white/80">Application headcounts by status, applications added each month, and senior citizens marked deceased.</p>
 <p class="mt-4 text-sm text-white/90">{{ number_format($counts['total']) }} {{ \Illuminate\Support\Str::plural('application', $counts['total']) }} in {{ $year }}</p>
 </div>
 <a href="{{ route('reports.export', ['year' => $year]) }}" class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[oklch(38%_0.15_151.711)] shadow-sm transition hover:bg-green-50">
@@ -70,7 +71,7 @@ Export to Excel
 {{-- =====================================================
     HEADCOUNTS
 ====================================================== --}}
-<div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+<div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
 
 <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
 <p class="text-xs font-semibold uppercase tracking-wider text-gray-500">Total applications</p>
@@ -90,6 +91,15 @@ Export to Excel
 <p class="mt-1 text-xs text-gray-400">{{ $card['hint'] }}</p>
 </div>
 @endforeach
+
+<div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+<div class="flex items-center gap-2">
+<span class="size-2 rounded-full bg-gray-500"></span>
+<p class="text-xs font-semibold uppercase tracking-wider text-gray-500">Deceased</p>
+</div>
+<p class="mt-2 text-3xl font-bold tabular-nums text-gray-900">{{ number_format($deceasedTotal) }}</p>
+<p class="mt-1 text-xs text-gray-400">Marked deceased in {{ $year }}</p>
+</div>
 
 </div>
 
@@ -161,6 +171,7 @@ Export to Excel
 <th scope="col" class="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Approved</th>
 <th scope="col" class="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Rejected</th>
 <th scope="col" class="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Total added</th>
+<th scope="col" class="border-l border-gray-200 px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Deceased</th>
 </tr>
 </thead>
 
@@ -172,6 +183,7 @@ Export to Excel
 <td class="whitespace-nowrap px-6 py-4 text-right text-sm tabular-nums {{ $row['approved'] ? 'text-gray-900' : 'text-gray-300' }}">{{ number_format($row['approved']) }}</td>
 <td class="whitespace-nowrap px-6 py-4 text-right text-sm tabular-nums {{ $row['rejected'] ? 'text-gray-900' : 'text-gray-300' }}">{{ number_format($row['rejected']) }}</td>
 <td class="whitespace-nowrap px-6 py-4 text-right text-sm font-semibold tabular-nums {{ $row['total'] ? 'text-gray-900' : 'text-gray-300' }}">{{ number_format($row['total']) }}</td>
+<td class="whitespace-nowrap border-l border-gray-100 px-6 py-4 text-right text-sm tabular-nums {{ ($row['deceased'] ?? 0) ? 'text-gray-900' : 'text-gray-300' }}">{{ number_format($row['deceased'] ?? 0) }}</td>
 </tr>
 @endforeach
 </tbody>
@@ -183,6 +195,7 @@ Export to Excel
 <td class="px-6 py-3 text-right text-sm font-semibold tabular-nums text-gray-900">{{ number_format($counts['approved']) }}</td>
 <td class="px-6 py-3 text-right text-sm font-semibold tabular-nums text-gray-900">{{ number_format($counts['rejected']) }}</td>
 <td class="px-6 py-3 text-right text-sm font-bold tabular-nums text-gray-900">{{ number_format($counts['total']) }}</td>
+<td class="border-l border-gray-200 px-6 py-3 text-right text-sm font-semibold tabular-nums text-gray-900">{{ number_format($deceasedTotal) }}</td>
 </tr>
 </tfoot>
 

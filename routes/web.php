@@ -20,22 +20,10 @@ Route::middleware([
     'verified',
 ])->group(function () {
 
-    /*
-    |--------------------------------------------------------------------------
-    | DASHBOARD
-    |--------------------------------------------------------------------------
-    */
-
     Route::get('/dashboard', [DashboardController::class, 'index'])
         ->name('dashboard');
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | SENIOR CITIZENS
-    |--------------------------------------------------------------------------
-    */
-
+    // ---- SENIOR CITIZENS ----
     Route::get('/senior-citizens', [SeniorCitizenController::class, 'index'])
         ->name('senior-citizens.index');
 
@@ -55,13 +43,7 @@ Route::middleware([
     Route::patch('/senior-citizens/{seniorCitizen}/deceased', [SeniorCitizenController::class, 'deceased'])
         ->name('senior-citizens.deceased');
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | APPLICATIONS
-    |--------------------------------------------------------------------------
-    */
-
+    // ---- APPLICATIONS ----
     Route::prefix('applications')->name('applications.')->group(function () {
 
         Route::get('/', [ApplicationController::class, 'index'])
@@ -69,6 +51,10 @@ Route::middleware([
 
         Route::get('/create', [ApplicationController::class, 'create'])
             ->name('create');
+
+        // Live duplicate-name check (must stay above the /{application}/... routes)
+        Route::get('/check-duplicate', [ApplicationController::class, 'checkDuplicate'])
+            ->name('checkDuplicate');
 
         Route::post('/', [ApplicationController::class, 'store'])
             ->name('store');
@@ -87,13 +73,7 @@ Route::middleware([
 
     });
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | SUBSIDIES
-    |--------------------------------------------------------------------------
-    */
-
+    // ---- SUBSIDIES ----
     Route::prefix('subsidies')->name('subsidies.')->group(function () {
 
         Route::get('/', [SubsidyController::class, 'index'])->name('index');
@@ -104,13 +84,7 @@ Route::middleware([
 
     });
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | SUBSIDY RELEASES
-    |--------------------------------------------------------------------------
-    */
-
+    // ---- SUBSIDY RELEASES ----
     Route::prefix('subsidy-releases')->name('subsidy-releases.')->group(function () {
 
         Route::get('/', [SubsidyReleaseController::class, 'index'])
@@ -133,13 +107,7 @@ Route::middleware([
 
     });
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | REPORTS
-    |--------------------------------------------------------------------------
-    */
-
+    // ---- REPORTS ----
     Route::prefix('reports')->name('reports.')->group(function () {
 
         Route::get('/', [ReportController::class, 'index'])
@@ -150,13 +118,7 @@ Route::middleware([
 
     });
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | ANNOUNCEMENTS
-    |--------------------------------------------------------------------------
-    */
-
+    // ---- ANNOUNCEMENTS ----
     Route::prefix('announcements')->name('announcements.')->group(function () {
 
         Route::get('/', [AnnouncementController::class, 'index'])
@@ -182,13 +144,7 @@ Route::middleware([
 
     });
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | PSGC ADDRESS LOOKUP
-    |--------------------------------------------------------------------------
-    */
-
+    // ---- PSGC ADDRESS LOOKUP ----
     Route::prefix('psgc')->name('psgc.')->group(function () {
 
         Route::get('/regions', [PsgcController::class, 'regions'])

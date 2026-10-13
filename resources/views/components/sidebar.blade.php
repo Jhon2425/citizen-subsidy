@@ -44,11 +44,6 @@
             'active' => request()->routeIs('reports.*'),
             'icon'   => 'M4 19V5m0 14h16M8 16v-5m4 5V7m4 9v-8',
         ],
-        [
-            'label' => 'Users',
-            'href'  => '#',
-            'icon'  => 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2m8-10a4 4 0 100-8 4 4 0 000 8zm8 10v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
-        ],
     ];
 
     $user = auth()->user();

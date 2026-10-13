@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Imports\SeniorCitizensImport;
 use App\Models\SeniorCitizen;
+use App\Services\DuplicateApplicantChecker;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Schema;
@@ -48,7 +49,7 @@ class SeniorCitizenController extends Controller
      * Manually add a senior citizen directly (not via an Application),
      * e.g. for walk-in registrations already vetted offline.
      */
-    public function store(Request $request)
+    public function store(Request $request, DuplicateApplicantChecker $checker)
     {
         $data = $request->validate([
             'list_name'       => ['required', 'string', 'max:255'],
@@ -59,6 +60,13 @@ class SeniorCitizenController extends Controller
             'address'    => ['nullable', 'string', 'max:255'],
             'contact_number'  => ['nullable', 'string', 'max:20'],
         ]);
+
+        // Same person already in the master list or in applications?
+        // Uses the flash "error" banner this page already shows, so it
+        // doesn't reopen the edit modal.
+        if ($message = $checker->checkFullName($data['list_name'])) {
+            return back()->withInput()->with('error', $message);
+        }
 
         $data['is_active'] = true;
 

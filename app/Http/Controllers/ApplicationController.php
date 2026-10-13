@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Application;
 use App\Models\SeniorCitizen;
 use App\Models\Subsidy;
+use App\Services\DuplicateApplicantChecker;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -48,9 +49,31 @@ class ApplicationController extends Controller
         ]);
     }
 
-    public function store(Request $request)
+    /**
+     * Live duplicate check used by the Register New modal while typing.
+     */
+    public function checkDuplicate(Request $request, DuplicateApplicantChecker $checker)
     {
-        $application = Application::create($this->validated($request));
+        $message = $checker->checkApplicant(
+            $request->only(['first_name', 'last_name', 'middle_name']),
+            $request->integer('ignore_id') ?: null
+        );
+
+        return response()->json([
+            'duplicate' => $message !== null,
+            'message'   => $message,
+        ]);
+    }
+
+    public function store(Request $request, DuplicateApplicantChecker $checker)
+    {
+        $data = $this->validated($request);
+
+        if ($message = $checker->checkApplicant($data)) {
+            return back()->withInput()->withErrors(['duplicate' => $message]);
+        }
+
+        $application = Application::create($data);
 
         if ($application->status === 'approved') {
             $this->promoteToSeniorCitizen($application);
@@ -69,11 +92,18 @@ class ApplicationController extends Controller
         ]);
     }
 
-    public function update(Request $request, Application $application)
+    public function update(Request $request, Application $application, DuplicateApplicantChecker $checker)
     {
         $wasApproved = $application->status === 'approved';
 
-        $application->update($this->validated($request));
+        $data = $this->validated($request);
+
+        // Ignore this application (and the senior citizen created from it)
+        if ($message = $checker->checkApplicant($data, $application->id)) {
+            return back()->withInput()->withErrors(['duplicate' => $message]);
+        }
+
+        $application->update($data);
 
         if ($application->status === 'approved' && ! $wasApproved) {
             $this->promoteToSeniorCitizen($application);
