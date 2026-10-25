@@ -101,7 +101,7 @@
                 {{-- =============================================
                     LOG IN FORM
                 ============================================== --}}
-                <div class="mt-6">
+                <div class="mt-5">
 
                     <form method="POST" action="{{ route('login') }}" class="space-y-5">
                         @csrf
@@ -199,6 +199,34 @@
                         </x-button>
 
                     </form>
+
+
+                    {{-- =============================================
+                        GOOGLE LOG IN (below the Log in button)
+                        Hidden automatically if the 'auth.google.redirect'
+                        route isn't registered.
+                    ============================================== --}}
+                    @if (Route::has('auth.google.redirect'))
+                        <div class="mt-5 flex items-center gap-3" aria-hidden="true">
+                            <span class="h-px flex-1 bg-gray-200"></span>
+                            <span class="text-xs font-medium uppercase tracking-wide text-gray-400">or</span>
+                            <span class="h-px flex-1 bg-gray-200"></span>
+                        </div>
+
+                        <a href="{{ route('auth.google.redirect', ['mode' => 'login']) }}"
+                           class="mt-5 flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300
+                                  bg-white py-2.5 text-sm font-semibold text-gray-700 shadow-sm
+                                  hover:bg-gray-50 transition
+                                  focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#3d7a26]">
+                            <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                                <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.2-2.27H12v4.3h6.47a5.53 5.53 0 0 1-2.4 3.63v3h3.87c2.27-2.09 3.55-5.17 3.55-8.66Z"/>
+                                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.94-2.9l-3.87-3c-1.08.72-2.46 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.27v3.11A12 12 0 0 0 12 24Z"/>
+                                <path fill="#FBBC05" d="M5.27 14.29a7.2 7.2 0 0 1 0-4.58V6.6H1.27a12 12 0 0 0 0 10.8l4-3.11Z"/>
+                                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.43-3.43C17.94 1.19 15.24 0 12 0 7.31 0 3.26 2.69 1.27 6.6l4 3.11C6.22 6.86 8.87 4.75 12 4.75Z"/>
+                            </svg>
+                            {{ __('Log in with Google') }}
+                        </a>
+                    @endif
 
                     @if ($canRegister)
                         <p class="mt-6 text-center text-sm text-gray-600">

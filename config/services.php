@@ -41,9 +41,18 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI'),
     ],
 
-    'semaphore' => [
-        'api_key'     => env('SEMAPHORE_API_KEY'),
-        'sender_name' => env('SEMAPHORE_SENDER_NAME'),
-        'endpoint'    => env('SEMAPHORE_ENDPOINT', 'https://semaphore.co/api/v4/messages'),
+    'unisms' => [
+        // Secret key from your UniSMS dashboard.
+        'secret_key' => env('UNISMS_SECRET_KEY'),
+
+        // Your registered sender ID from the UniSMS dashboard (required by the API).
+        'sender_id'  => env('UNISMS_SENDER_ID'),
+
+        // Optional. Used to retry numbers the main sender ID can't reach
+        // (e.g. Smart / TNT / Sun). Use an all-network sender ID here.
+        'fallback_sender_id' => env('UNISMS_FALLBACK_SENDER_ID'),
+
+        // Base URL of the UniSMS API (the service appends /sms).
+        'base_url'   => env('UNISMS_BASE_URL', 'https://unismsapi.com/api'),
     ],
 ];

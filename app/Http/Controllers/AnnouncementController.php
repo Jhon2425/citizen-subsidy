@@ -5,14 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\Announcement;
 use App\Models\SeniorCitizen;
 use App\Models\Subsidy;
-use App\Services\SemaphoreSmsService;
+use App\Services\UniSmsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class AnnouncementController extends Controller
 {
-    public function __construct(protected SemaphoreSmsService $sms)
+    public function __construct(protected UniSmsService $sms)
     {
     }
 
@@ -54,9 +55,9 @@ class AnnouncementController extends Controller
 
     public function recipientsCount(Request $request)
     {
-        $codes = array_filter(
+        $codes = array_values(array_filter(
             (array) $request->input('barangay_codes', [])
-        );
+        ));
 
         return response()->json([
             'count' => $this->recipientsQuery($codes)->count(),
@@ -65,15 +66,7 @@ class AnnouncementController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'title' => ['required', 'string', 'max:255'],
-            'subsidy_id' => ['required', 'exists:subsidies,id'],
-            'message' => ['required', 'string', 'max:300'],
-            'distribution_date' => ['nullable', 'date'],
-            'distribution_location' => ['nullable', 'string', 'max:255'],
-            'barangay_codes' => ['nullable', 'array'],
-            'barangay_codes.*' => ['string'],
-        ]);
+        $validated = $request->validate($this->rules());
 
         $codes = array_values(array_filter($validated['barangay_codes'] ?? []));
 
@@ -122,15 +115,7 @@ class AnnouncementController extends Controller
             'This announcement can no longer be edited.'
         );
 
-        $validated = $request->validate([
-            'title' => ['required', 'string', 'max:255'],
-            'subsidy_id' => ['required', 'exists:subsidies,id'],
-            'message' => ['required', 'string', 'max:300'],
-            'distribution_date' => ['nullable', 'date'],
-            'distribution_location' => ['nullable', 'string', 'max:255'],
-            'barangay_codes' => ['nullable', 'array'],
-            'barangay_codes.*' => ['string'],
-        ]);
+        $validated = $request->validate($this->rules());
 
         $codes = array_values(array_filter($validated['barangay_codes'] ?? []));
 
@@ -143,6 +128,7 @@ class AnnouncementController extends Controller
                 'distribution_date' => $validated['distribution_date'] ?? null,
                 'distribution_location' => $validated['distribution_location'] ?? null,
                 'recipients_count' => $this->recipientsQuery($codes)->count(),
+                'sent_count' => 0,
                 'status' => 'draft', // a failed announcement returns to draft once edited
             ]);
 
@@ -217,10 +203,10 @@ class AnnouncementController extends Controller
                 ->with('error', "{$prefix}, but no senior citizen with a valid contact number was found for the selected barangay(s).");
         }
 
-        // Show the real reason (e.g. missing API key, no credits) instead of a generic message.
-        $reason = !empty($result['errors'])
-            ? ' Reason: ' . \Illuminate\Support\Str::limit((string) $result['errors'][0], 200)
-            : ' Check the logs and try again.';
+        // Show every real reason (invalid key, SSL, no credits...) instead of a generic message.
+        $reason = ! empty($result['errors'])
+            ? ' Reason: ' . Str::limit(implode(' | ', $result['errors']), 400)
+            : ' Check storage/logs/laravel.log and try again.';
 
         return redirect()
             ->route('announcements.index')
@@ -228,7 +214,7 @@ class AnnouncementController extends Controller
     }
 
     /**
-     * Send the announcement's message to its recipients through Semaphore
+     * Send the announcement's message to its recipients through UniSMS
      * and update status / sent_count / recipients_count.
      *
      * @return array{sent: int, failed: int, errors: array<int, string>}
@@ -273,7 +259,7 @@ class AnnouncementController extends Controller
 
             $result = $this->sms->sendBulk($numbers, $announcement->message);
 
-            if (!empty($result['errors'])) {
+            if (! empty($result['errors'])) {
                 Log::error('Announcement SMS errors', [
                     'announcement_id' => $announcement->id,
                     'errors' => $result['errors'],
@@ -306,8 +292,9 @@ class AnnouncementController extends Controller
     }
 
     /**
-     * Convert to Semaphore-friendly PH format (09XXXXXXXXX).
+     * Convert to PH local format (09XXXXXXXXX).
      * Accepts 09XXXXXXXXX, 9XXXXXXXXX, 639XXXXXXXXX, +639XXXXXXXXX.
+     * UniSmsService converts it to +639XXXXXXXXX when sending.
      */
     protected function normalizeNumber(?string $number): ?string
     {
@@ -325,6 +312,22 @@ class AnnouncementController extends Controller
     /* =====================================================
         HELPERS
     ====================================================== */
+
+    /**
+     * Validation rules shared by store() and update().
+     */
+    protected function rules(): array
+    {
+        return [
+            'title' => ['required', 'string', 'max:255'],
+            'subsidy_id' => ['required', 'exists:subsidies,id'],
+            'message' => ['required', 'string', 'max:300'],
+            'distribution_date' => ['nullable', 'date'],
+            'distribution_location' => ['nullable', 'string', 'max:255'],
+            'barangay_codes' => ['nullable', 'array'],
+            'barangay_codes.*' => ['string'],
+        ];
+    }
 
     /**
      * Save the selected barangays for an announcement.

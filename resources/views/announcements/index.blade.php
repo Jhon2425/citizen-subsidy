@@ -71,12 +71,21 @@
             </p>
         </div>
 
-        {{-- Flash message --}}
+        {{-- Flash message: success --}}
         @if (session('success'))
             <div x-data="{ show: true }" x-show="show" x-transition class="mb-4 flex items-center gap-2 p-4 rounded-xl bg-green-50 border border-green-100 text-green-700 text-sm">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
                 <span class="flex-1">{{ session('success') }}</span>
                 <button type="button" x-on:click="show = false" class="text-green-600 hover:text-green-800" aria-label="Dismiss">&times;</button>
+            </div>
+        @endif
+
+        {{-- Flash message: error (shows the real reason an SMS failed) --}}
+        @if (session('error'))
+            <div x-data="{ show: true }" x-show="show" x-transition class="mb-4 flex items-start gap-2 p-4 rounded-xl bg-red-50 border border-red-100 text-red-700 text-sm" role="alert">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+                <span class="flex-1 break-words">{{ session('error') }}</span>
+                <button type="button" x-on:click="show = false" class="text-red-500 hover:text-red-700" aria-label="Dismiss">&times;</button>
             </div>
         @endif
 
@@ -252,12 +261,16 @@
                                     <button type="button" x-on:click="openEdit({{ $announcement->id }})"
                                             class="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-100 transition">Edit</button>
                                 @endif
-                                @if ($status === 'draft')
+
+                                {{-- Drafts can be sent; failed announcements can be retried --}}
+                                @if (in_array($status, ['draft', 'failed']))
                                     <form action="{{ route('announcements.send', $announcement) }}" method="POST">
                                         @csrf
                                         <button type="submit"
                                                 class="rounded-lg px-3 py-1.5 text-xs font-semibold text-[var(--brand)] border border-[var(--brand)]/30 bg-[var(--brand-tint)] hover:bg-[var(--brand)] hover:text-white transition"
-                                                onclick="return confirm('Send SMS to the selected recipients now?')">Send now</button>
+                                                onclick="return confirm('Send SMS to the selected recipients now?')">
+                                            {{ $status === 'failed' ? 'Retry' : 'Send now' }}
+                                        </button>
                                     </form>
                                 @endif
                             </div>
@@ -400,7 +413,14 @@
                     </div>
                 @endif
 
-                <form x-bind:action="formAction" method="POST" class="p-6 space-y-6 text-left" x-on:submit="sending = true">
+                {{--
+                    `sending` is set in a setTimeout so the browser serializes the form
+                    (including the clicked submit button's name/value, i.e. send_now=1)
+                    BEFORE Alpine disables the buttons. Otherwise "Save & send now" would be
+                    submitted without send_now and silently saved as a draft.
+                --}}
+                <form x-bind:action="formAction" method="POST" class="p-6 space-y-6 text-left"
+                      x-on:submit="setTimeout(() => sending = true, 0)">
                     @csrf
                     <template x-if="mode === 'edit'">
                         <div>
@@ -540,7 +560,7 @@
 
             <div x-show="deleteItem" x-transition.scale.95 x-on:click.stop class="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl ring-1 ring-black/5">
                 <template x-if="deleteItem">
-                    <form x-bind:action="deleteItem.destroy_url" method="POST" x-on:submit="deleting = true">
+                    <form x-bind:action="deleteItem.destroy_url" method="POST" x-on:submit="setTimeout(() => deleting = true, 0)">
                         @csrf
                         @method('DELETE')
                         <div class="flex h-11 w-11 items-center justify-center rounded-full bg-red-100 text-red-600">
@@ -622,6 +642,7 @@
                 openCreate() {
                     this.mode = 'create'; this.editId = null; this.form = blank();
                     this.search = ''; this.sending = false; this.viewItem = null; this.modalOpen = true;
+                    this.refreshRecipients();
                 },
                 openEdit(id) {
                     const a = this.items[id]; if (!a) return;
@@ -632,6 +653,7 @@
                         barangay_codes: [...a.barangay_codes],
                     };
                     this.search = ''; this.sending = false; this.viewItem = null; this.modalOpen = true;
+                    this.refreshRecipients();
                 },
                 openView(id) { this.viewItem = this.items[id] || null; },
                 openDelete(id) { this.deleting = false; this.viewItem = null; this.deleteItem = this.items[id] || null; },
@@ -665,7 +687,9 @@
                         const params = new URLSearchParams();
                         this.form.barangay_codes.forEach(c => params.append('barangay_codes[]', c));
                         this.recipientsLoading = true;
-                        fetch(`${cfg.countUrl}?${params.toString()}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                        fetch(`${cfg.countUrl}?${params.toString()}`, {
+                            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+                        })
                             .then(r => r.json())
                             .then(d => { this.recipients = d.count; })
                             .catch(() => {})

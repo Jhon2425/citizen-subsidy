@@ -1,19 +1,24 @@
 <?php
 
-namespace App\Actions\Fortify;
+namespace App\Providers;
 
-use Illuminate\Contracts\Validation\Rule;
+use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
-trait PasswordValidationRules
+class AppServiceProvider extends ServiceProvider
 {
-    /**
-     * Get the validation rules used to validate passwords.
-     *
-     * @return array<int, Rule|array<mixed>|string>
-     */
-    protected function passwordRules(): array
+    public function register(): void
     {
-        return ['required', 'string', Password::default(), 'confirmed'];
+        //
+    }
+
+    public function boot(): void
+    {
+        Password::defaults(function () {
+            return Password::min(8)
+                ->mixedCase()   // upper and lower case letters
+                ->numbers()     // at least one number
+                ->symbols();    // at least one special character
+        });
     }
 }

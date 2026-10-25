@@ -9,9 +9,61 @@ use App\Http\Controllers\ApplicationController;
 use App\Http\Controllers\SubsidyController;
 use App\Http\Controllers\SubsidyReleaseController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\LoginHistoryController;
+use App\Http\Controllers\GoogleController;
+use App\Http\Controllers\PasswordCodeController;
 
 Route::get('/', function () {
     return view('welcome');
+});
+
+// ---- GOOGLE SIGN-IN / SIGN-UP ----
+// Must stay OUTSIDE the auth group below: visitors aren't logged in yet.
+// 'guest' bounces already-logged-in users to the dashboard.
+Route::middleware('guest')->prefix('auth/google')->name('auth.google.')->group(function () {
+
+    Route::get('/redirect', [GoogleController::class, 'redirect'])
+        ->name('redirect');
+
+    Route::get('/callback', [GoogleController::class, 'callback'])
+        ->name('callback');
+
+});
+
+// ---- FORGOT PASSWORD (6-digit verification code) ----
+// Step 1: enter email -> Step 2: enter emailed code -> Step 3: set new password.
+// Also OUTSIDE the auth group: visitors who forgot their password aren't logged in.
+// Requires Features::resetPasswords() to be commented out in config/fortify.php,
+// otherwise Fortify registers its own link-based routes with the same names.
+Route::middleware('guest')->group(function () {
+
+    // Step 1
+    Route::get('/forgot-password', [PasswordCodeController::class, 'showRequest'])
+        ->name('password.request');
+
+    Route::post('/forgot-password', [PasswordCodeController::class, 'sendCode'])
+        ->middleware('throttle:5,1')
+        ->name('password.email');
+
+    // Step 2
+    Route::get('/forgot-password/verify', [PasswordCodeController::class, 'showVerify'])
+        ->name('password.verify');
+
+    Route::post('/forgot-password/verify', [PasswordCodeController::class, 'verify'])
+        ->middleware('throttle:10,1')
+        ->name('password.verify.submit');
+
+    Route::post('/forgot-password/resend', [PasswordCodeController::class, 'resend'])
+        ->middleware('throttle:3,1')
+        ->name('password.resend');
+
+    // Step 3 (only reachable after the code was verified)
+    Route::get('/reset-password', [PasswordCodeController::class, 'showReset'])
+        ->name('password.reset');
+
+    Route::post('/reset-password', [PasswordCodeController::class, 'reset'])
+        ->name('password.update');
+
 });
 
 Route::middleware([
@@ -115,6 +167,14 @@ Route::middleware([
 
         Route::get('/export', [ReportController::class, 'export'])
             ->name('export');
+
+    });
+
+    // ---- LOGIN HISTORY ----
+    Route::prefix('login-history')->name('login-history.')->group(function () {
+
+        Route::get('/', [LoginHistoryController::class, 'index'])
+            ->name('index');
 
     });
 

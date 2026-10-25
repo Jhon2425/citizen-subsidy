@@ -44,9 +44,13 @@
             'active' => request()->routeIs('reports.*'),
             'icon'   => 'M4 19V5m0 14h16M8 16v-5m4 5V7m4 9v-8',
         ],
+        [
+            'label'  => 'Login History',
+            'href'   => route('login-history.index'),
+            'active' => request()->routeIs('login-history.*'),
+            'icon'   => 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
+        ],
     ];
-
-    $user = auth()->user();
 
     $sidebarClass = 'shell-sidebar fixed inset-y-0 left-0 z-40 w-72 overflow-hidden bg-[oklch(45%_0.15_151.711)] text-white border-r border-[oklch(35%_0.12_151.711)] will-change-[width,transform] transform-gpu lg:translate-x-0';
 
@@ -63,8 +67,6 @@
     $linkIdle = 'text-white/80 hover:bg-white/10 hover:text-white';
 
     $accent = 'text-[oklch(79.2%_0.209_151.711)]';
-
-    $avatarClass = 'w-10 h-10 rounded-full bg-[oklch(79.2%_0.209_151.711)] text-[oklch(35%_0.12_151.711)] flex items-center justify-center font-bold shrink-0';
 
     $toggleClass = 'shell-toggle hidden lg:flex fixed top-6 left-[16.75rem] z-50 items-center justify-center w-8 h-8 rounded-lg text-white/70 hover:text-white hover:bg-white/10 bg-[oklch(45%_0.15_151.711)] border border-white/20 transform-gpu';
 @endphp
@@ -118,22 +120,6 @@
 @endif
 
 @endforeach
-
-</div>
-
-
-<div class="border-t border-white/10 p-3 shrink-0 overflow-hidden">
-
-<div class="flex items-center gap-3 rounded-xl p-2 overflow-hidden hover:bg-white/10 transition-colors duration-200">
-
-<div class="{{ $avatarClass }}">{{ strtoupper(substr($user->name, 0, 1)) }}</div>
-
-<div class="shell-label min-w-0" :class="{{ $labelBind }}" :aria-hidden="sidebarCollapsed.toString()">
-<p class="text-sm font-semibold text-white truncate">{{ $user->name }}</p>
-<p class="text-xs text-white/60 truncate">{{ $user->email }}</p>
-</div>
-
-</div>
 
 </div>
 

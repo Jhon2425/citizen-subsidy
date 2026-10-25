@@ -30,7 +30,8 @@
              get hasLower()  { return /[a-z]/.test(this.password); },
              get hasUpper()  { return /[A-Z]/.test(this.password); },
              get hasNumber() { return /\d/.test(this.password); },
-             get passwordValid() { return this.hasLength && this.hasLower && this.hasUpper && this.hasNumber; },
+             get hasSymbol() { return /[^A-Za-z0-9]/.test(this.password); },
+             get passwordValid() { return this.hasLength && this.hasLower && this.hasUpper && this.hasNumber && this.hasSymbol; },
 
              // 0 to 4, one point each for: 8+ characters, upper and lower case, a number, a symbol.
              get score() {
@@ -102,35 +103,6 @@
             <div class="px-6 pt-6 pb-8 sm:px-8">
 
                 <x-validation-errors class="mb-5 rounded-lg bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700" />
-
-                {{-- =============================================
-                    GOOGLE SIGN-UP
-                    Requires Laravel Socialite (or similar) wired up with
-                    a 'auth.google.redirect' route that kicks off the
-                    OAuth flow. The button is hidden automatically if
-                    that route hasn't been registered yet.
-                ============================================== --}}
-                @if (Route::has('auth.google.redirect'))
-                    <a href="{{ route('auth.google.redirect') }}"
-                       class="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300
-                              bg-white py-2.5 text-sm font-semibold text-gray-700 shadow-sm
-                              hover:bg-gray-50 transition
-                              focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#3d7a26]">
-                        <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                            <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.2-2.27H12v4.3h6.47a5.53 5.53 0 0 1-2.4 3.63v3h3.87c2.27-2.09 3.55-5.17 3.55-8.66Z"/>
-                            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.94-2.9l-3.87-3c-1.08.72-2.46 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.27v3.11A12 12 0 0 0 12 24Z"/>
-                            <path fill="#FBBC05" d="M5.27 14.29a7.2 7.2 0 0 1 0-4.58V6.6H1.27a12 12 0 0 0 0 10.8l4-3.11Z"/>
-                            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.43-3.43C17.94 1.19 15.24 0 12 0 7.31 0 3.26 2.69 1.27 6.6l4 3.11C6.22 6.86 8.87 4.75 12 4.75Z"/>
-                        </svg>
-                        {{ __('Sign up with Google') }}
-                    </a>
-
-                    <div class="my-5 flex items-center gap-3" aria-hidden="true">
-                        <span class="h-px flex-1 bg-gray-200"></span>
-                        <span class="text-xs font-medium uppercase tracking-wide text-gray-400">or sign up with email</span>
-                        <span class="h-px flex-1 bg-gray-200"></span>
-                    </div>
-                @endif
 
                 <form method="POST" action="{{ route('register') }}" class="space-y-5">
                     @csrf
@@ -255,6 +227,9 @@
                             <li :class="hasNumber ? 'text-[#2f6b1f]' : 'text-gray-500'">
                                 <span x-text="hasNumber ? '✓' : '○'"></span> One number
                             </li>
+                            <li :class="hasSymbol ? 'text-[#2f6b1f]' : 'text-gray-500'">
+                                <span x-text="hasSymbol ? '✓' : '○'"></span> One special character (e.g. ! @ # $ % &amp;)
+                            </li>
                         </ul>
                     </div>
 
@@ -329,17 +304,45 @@
                         </x-button>
                     </div>
 
-                    <p class="text-center text-sm text-gray-600 pt-1">
-                        {{ __('Already registered?') }}
-                        <a href="{{ route('login') }}"
-                           class="font-semibold text-[#2f6b1f] hover:text-[#245217] hover:underline
-                                  rounded-md focus:outline-none focus-visible:ring-2
-                                  focus-visible:ring-offset-2 focus-visible:ring-[#3d7a26]">
-                            {{ __('Log in') }}
-                        </a>
-                    </p>
-
                 </form>
+
+
+                {{-- =============================================
+                    GOOGLE SIGN-UP (below the Create account button)
+                    Hidden automatically if the 'auth.google.redirect'
+                    route isn't registered.
+                ============================================== --}}
+                @if (Route::has('auth.google.redirect'))
+                    <div class="mt-5 flex items-center gap-3" aria-hidden="true">
+                        <span class="h-px flex-1 bg-gray-200"></span>
+                        <span class="text-xs font-medium uppercase tracking-wide text-gray-400">or</span>
+                        <span class="h-px flex-1 bg-gray-200"></span>
+                    </div>
+
+                    <a href="{{ route('auth.google.redirect', ['mode' => 'register']) }}"
+                       class="mt-5 flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300
+                              bg-white py-2.5 text-sm font-semibold text-gray-700 shadow-sm
+                              hover:bg-gray-50 transition
+                              focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#3d7a26]">
+                        <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                            <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.2-2.27H12v4.3h6.47a5.53 5.53 0 0 1-2.4 3.63v3h3.87c2.27-2.09 3.55-5.17 3.55-8.66Z"/>
+                            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.94-2.9l-3.87-3c-1.08.72-2.46 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.27v3.11A12 12 0 0 0 12 24Z"/>
+                            <path fill="#FBBC05" d="M5.27 14.29a7.2 7.2 0 0 1 0-4.58V6.6H1.27a12 12 0 0 0 0 10.8l4-3.11Z"/>
+                            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.43-3.43C17.94 1.19 15.24 0 12 0 7.31 0 3.26 2.69 1.27 6.6l4 3.11C6.22 6.86 8.87 4.75 12 4.75Z"/>
+                        </svg>
+                        {{ __('Sign up with Google') }}
+                    </a>
+                @endif
+
+                <p class="mt-6 text-center text-sm text-gray-600">
+                    {{ __('Already registered?') }}
+                    <a href="{{ route('login') }}"
+                       class="font-semibold text-[#2f6b1f] hover:text-[#245217] hover:underline
+                              rounded-md focus:outline-none focus-visible:ring-2
+                              focus-visible:ring-offset-2 focus-visible:ring-[#3d7a26]">
+                        {{ __('Log in') }}
+                    </a>
+                </p>
 
             </div>
 
