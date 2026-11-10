@@ -13,11 +13,9 @@ return new class extends Migration
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
             $table->string('ip_address', 45)->nullable();
             $table->text('user_agent')->nullable();
-            $table->timestamp('logged_in_at')->useCurrent();
+            $table->timestamp('logged_in_at')->nullable()->index();
             $table->timestamp('logged_out_at')->nullable();
             $table->timestamps();
-
-            $table->index('logged_in_at');
         });
     }
 

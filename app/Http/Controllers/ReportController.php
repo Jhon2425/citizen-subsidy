@@ -54,7 +54,7 @@ class ReportController extends Controller
     }
 
     /**
-     * Streams a formatted .xlsx (Summary + Applications sheets).
+     * Streams a formatted .xlsx (Summary, Monthly and Applications sheets).
      * Needs:  composer require phpoffice/phpspreadsheet
      * Until that package is installed, it falls back to a CSV so the button never 500s.
      */
@@ -259,7 +259,8 @@ class ReportController extends Controller
             ->setTitle("Applications Report {$year}")
             ->setCreator(config('app.name', 'Senior Citizen Subsidy Management'));
 
-        $this->summarySheet($book->getActiveSheet(), $year, $counts, $monthly);
+        $this->summarySheet($book->getActiveSheet(), $year, $counts);
+        $this->monthlySheet($book->createSheet(), $year, $monthly);
         $this->applicationsSheet($book->createSheet(), $year, $rows);
 
         $book->setActiveSheetIndex(0);
@@ -267,24 +268,20 @@ class ReportController extends Controller
         return $book;
     }
 
-    /** Sheet 1 — headcount by status + applications added per month. */
-    private function summarySheet(Worksheet $s, int $year, array $counts, Collection $monthly): void
+    /** Sheet 1 — headcount by status. */
+    private function summarySheet(Worksheet $s, int $year, array $counts): void
     {
         $s->setTitle('Summary');
-        $this->banner($s, 'A', 'E', "Applications Report — {$year}");
+        $this->banner($s, 'A', 'C', "Applications Report — {$year}");
 
-        // ---- Headcount by status (rows 5-10) ----
-        $s->setCellValue('A5', 'Headcount by status');
-        $s->getStyle('A5')->getFont()->setBold(true)->setSize(12);
+        $s->fromArray(['Status', 'Headcount', 'Share'], null, 'A5');
+        $this->headerRow($s, 'A5:C5');
 
-        $s->fromArray(['Status', 'Headcount', 'Share'], null, 'A6');
-        $this->headerRow($s, 'A6:C6');
-
-        $r = 7;
+        $r = 6;
         foreach (['pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected'] as $key => $label) {
             $s->setCellValue("A{$r}", $label);
             $s->setCellValue("B{$r}", $counts[$key]);
-            $s->setCellValue("C{$r}", "=IF(\$B\$10=0,0,B{$r}/\$B\$10)");
+            $s->setCellValue("C{$r}", "=IF(\$B\$9=0,0,B{$r}/\$B\$9)");
 
             $style = self::STATUS_STYLE[$key];
             $s->getStyle("A{$r}")->applyFromArray([
@@ -294,23 +291,32 @@ class ReportController extends Controller
             $r++;
         }
 
-        $s->setCellValue('A10', 'Total');
-        $s->setCellValue('B10', '=SUM(B7:B9)');
-        $s->setCellValue('C10', '=SUM(C7:C9)');
-        $this->totalRow($s, 'A10:C10');
-        $this->box($s, 'A6:C10');
-        $s->getStyle('B7:B10')->getNumberFormat()->setFormatCode('#,##0');
-        $s->getStyle('C7:C10')->getNumberFormat()->setFormatCode('0%');
-        $s->getStyle('B7:C10')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $s->setCellValue('A9', 'Total');
+        $s->setCellValue('B9', '=SUM(B6:B8)');
+        $s->setCellValue('C9', '=SUM(C6:C8)');
+        $this->totalRow($s, 'A9:C9');
+        $this->box($s, 'A5:C9');
+        $s->getStyle('B6:B9')->getNumberFormat()->setFormatCode('#,##0');
+        $s->getStyle('C6:C9')->getNumberFormat()->setFormatCode('0%');
+        $s->getStyle('B6:C9')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-        // ---- Applications added per month (rows 12-26) ----
-        $s->setCellValue('A12', 'Applications added per month');
-        $s->getStyle('A12')->getFont()->setBold(true)->setSize(12);
+        $s->getColumnDimension('A')->setWidth(24);
+        $s->getColumnDimension('B')->setWidth(16);
+        $s->getColumnDimension('C')->setWidth(16);
 
-        $s->fromArray(['Month', 'Pending', 'Approved', 'Rejected', 'Total added'], null, 'A13');
-        $this->headerRow($s, 'A13:E13');
+        $this->printSetup($s, PageSetup::ORIENTATION_PORTRAIT);
+    }
 
-        $r = 14;
+    /** Sheet 2 — applications added per month (Jan–Dec). */
+    private function monthlySheet(Worksheet $s, int $year, Collection $monthly): void
+    {
+        $s->setTitle('Monthly');
+        $this->banner($s, 'A', 'E', "Applications Added per Month — {$year}");
+
+        $s->fromArray(['Month', 'Pending', 'Approved', 'Rejected', 'Total added'], null, 'A5');
+        $this->headerRow($s, 'A5:E5');
+
+        $r = 6;
         foreach ($monthly as $row) {
             $s->setCellValue("A{$r}", $row['label']);
             $s->setCellValue("B{$r}", $row['pending']);
@@ -324,17 +330,22 @@ class ReportController extends Controller
             $r++;
         }
 
-        $s->setCellValue('A26', "Total {$year}");
-        foreach (['B', 'C', 'D', 'E'] as $col) {
-            $s->setCellValue("{$col}26", "=SUM({$col}14:{$col}25)");
-        }
-        $this->totalRow($s, 'A26:E26');
-        $this->box($s, 'A13:E26');
-        $s->getStyle('B14:E26')->getNumberFormat()->setFormatCode('#,##0');
-        $s->getStyle('B14:E26')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $s->getStyle('A14:A25')->getFont()->setBold(true);
+        $last  = $r - 1;   // last month row (17)
+        $total = $r;       // total row (18)
 
-        $s->getColumnDimension('A')->setWidth(24);
+        $s->setCellValue("A{$total}", "Total {$year}");
+        foreach (['B', 'C', 'D', 'E'] as $col) {
+            $s->setCellValue("{$col}{$total}", "=SUM({$col}6:{$col}{$last})");
+        }
+        $this->totalRow($s, "A{$total}:E{$total}");
+        $this->box($s, "A5:E{$total}");
+        $s->getStyle("B6:E{$total}")->getNumberFormat()->setFormatCode('#,##0');
+        $s->getStyle("B6:E{$total}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $s->getStyle("A6:A{$last}")->getFont()->setBold(true);
+
+        $s->freezePane('A6');
+
+        $s->getColumnDimension('A')->setWidth(18);
         foreach (['B', 'C', 'D', 'E'] as $col) {
             $s->getColumnDimension($col)->setWidth(15);
         }
@@ -342,7 +353,7 @@ class ReportController extends Controller
         $this->printSetup($s, PageSetup::ORIENTATION_PORTRAIT);
     }
 
-    /** Sheet 2 — every application with the applicant's name, status and date. */
+    /** Sheet 3 — every application with the applicant's name, status and date. */
     private function applicationsSheet(Worksheet $s, int $year, Collection $rows): void
     {
         $s->setTitle('Applications');

@@ -16,6 +16,10 @@
                 'subsidy'          => $a->subsidy->name ?? '—',
                 'distribution_date'=> optional($a->distribution_date)->format('Y-m-d'),
                 'date_label'       => optional($a->distribution_date)->format('F d, Y') ?? '—',
+                'distribution_time'=> $a->distribution_time ? substr($a->distribution_time, 0, 5) : '',
+                'time_label'       => $a->distribution_time
+                                        ? \Illuminate\Support\Carbon::createFromFormat('H:i', substr($a->distribution_time, 0, 5))->format('g:i A')
+                                        : '—',
                 'venue'            => $a->distribution_location,
                 'barangay_codes'   => $a->barangays->pluck('barangay_code')->map(fn ($c) => (string) $c)->values(),
                 'barangay_names'   => $a->barangays->pluck('barangay_name')->values(),
@@ -41,6 +45,7 @@
                 'subsidy_id'            => (string) old('subsidy_id', ''),
                 'message'               => old('message', ''),
                 'distribution_date'     => old('distribution_date', ''),
+                'distribution_time'     => old('distribution_time', ''),
                 'distribution_location' => old('distribution_location', ''),
                 'barangay_codes'        => collect(old('barangay_codes', []))->map(fn ($c) => (string) $c)->values(),
             ],
@@ -220,6 +225,9 @@
                             <span class="inline-flex items-center gap-1.5">
                                 <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/></svg>
                                 {{ optional($announcement->distribution_date)->format('M d, Y') ?? 'No date set' }}
+                                @if ($announcement->distribution_time)
+                                    &middot; {{ \Illuminate\Support\Carbon::createFromFormat('H:i', substr($announcement->distribution_time, 0, 5))->format('g:i A') }}
+                                @endif
                             </span>
                             @if ($announcement->distribution_location)
                                 <span class="inline-flex items-center gap-1.5">
@@ -334,6 +342,7 @@
 
                             <dl class="grid grid-cols-2 gap-4 text-sm">
                                 <div><dt class="text-xs text-gray-500">Distribution date</dt><dd class="mt-0.5 font-medium text-gray-900" x-text="viewItem.date_label"></dd></div>
+                                <div><dt class="text-xs text-gray-500">Time</dt><dd class="mt-0.5 font-medium text-gray-900" x-text="viewItem.time_label"></dd></div>
                                 <div><dt class="text-xs text-gray-500">Venue</dt><dd class="mt-0.5 font-medium text-gray-900" x-text="viewItem.venue || '—'"></dd></div>
                             </dl>
 
@@ -477,6 +486,12 @@
                             @error('distribution_date') <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
                         </div>
                         <div>
+                            <label for="f-time" class="block text-sm font-medium text-gray-700 mb-1">Time</label>
+                            <input type="time" id="f-time" name="distribution_time" x-model="form.distribution_time"
+                                   class="w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand-ring)] @error('distribution_time') border-red-400 @enderror">
+                            @error('distribution_time') <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
+                        </div>
+                        <div class="col-span-2">
                             <label for="f-venue" class="block text-sm font-medium text-gray-700 mb-1">Venue</label>
                             <input type="text" id="f-venue" name="distribution_location" x-model="form.distribution_location" placeholder="e.g. Barangay Hall"
                                    class="w-full rounded-lg border-gray-300 shadow-sm text-sm focus:border-[var(--brand)] focus:ring-2 focus:ring-[var(--brand-ring)] @error('distribution_location') border-red-400 @enderror">
@@ -589,7 +604,7 @@
         function announcementsPage(cfg) {
             const blank = () => ({
                 title: '', subsidy_id: '', message: '',
-                distribution_date: '', distribution_location: '', barangay_codes: [],
+                distribution_date: '', distribution_time: '', distribution_location: '', barangay_codes: [],
             });
 
             const restoring = cfg.hasErrors;
@@ -610,7 +625,7 @@
                 editId: restoring && cfg.old.id ? cfg.old.id : null,
                 form: restoring ? {
                     title: cfg.old.title, subsidy_id: cfg.old.subsidy_id, message: cfg.old.message,
-                    distribution_date: cfg.old.distribution_date, distribution_location: cfg.old.distribution_location,
+                    distribution_date: cfg.old.distribution_date, distribution_time: cfg.old.distribution_time, distribution_location: cfg.old.distribution_location,
                     barangay_codes: [...cfg.old.barangay_codes],
                 } : blank(),
 
@@ -649,7 +664,7 @@
                     this.mode = 'edit'; this.editId = id;
                     this.form = {
                         title: a.title, subsidy_id: a.subsidy_id, message: a.message || '',
-                        distribution_date: a.distribution_date || '', distribution_location: a.venue || '',
+                        distribution_date: a.distribution_date || '', distribution_time: a.distribution_time || '', distribution_location: a.venue || '',
                         barangay_codes: [...a.barangay_codes],
                     };
                     this.search = ''; this.sending = false; this.viewItem = null; this.modalOpen = true;

@@ -13,10 +13,14 @@ class RecordLogout
             return;
         }
 
-        LoginHistory::where('user_id', $event->user->getAuthIdentifier())
-            ->whereNull('logged_out_at')
-            ->latest('logged_in_at')
-            ->first()
-            ?->update(['logged_out_at' => now()]);
+        $id = request()->hasSession() ? request()->session()->get('login_history_id') : null;
+
+        $query = LoginHistory::query()
+            ->where('user_id', $event->user->getAuthIdentifier())
+            ->whereNull('logged_out_at');
+
+        $id ? $query->whereKey($id) : $query->latest('logged_in_at')->limit(1);
+
+        $query->update(['logged_out_at' => now()]);
     }
 }

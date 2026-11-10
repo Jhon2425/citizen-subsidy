@@ -13,11 +13,14 @@ class LoginHistoryController extends Controller
 
         $histories = LoginHistory::with('user')
             ->when($search !== '', function ($query) use ($search) {
-                $query->where('ip_address', 'like', "%{$search}%")
-                    ->orWhereHas('user', function ($q) use ($search) {
-                        $q->where('name', 'like', "%{$search}%")
-                          ->orWhere('email', 'like', "%{$search}%");
-                    });
+                // Grouped so any future filters are not affected by the OR.
+                $query->where(function ($q) use ($search) {
+                    $q->where('ip_address', 'like', "%{$search}%")
+                        ->orWhereHas('user', function ($u) use ($search) {
+                            $u->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                        });
+                });
             })
             ->latest('logged_in_at')
             ->paginate(15)
