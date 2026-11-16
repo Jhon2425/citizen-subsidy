@@ -1,3 +1,4 @@
+
 <?php
 
 namespace App\Providers;
@@ -24,10 +25,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Matches the rules shown on the register page and assumed by
-        // PasswordCodeController (letters, numbers, symbols). Delete this
-        // block if you only want the default minimum length.
-        Password::defaults(fn () => Password::min(8)->letters()->mixedCase()->numbers()->symbols());
+        // Password validation defaults
+        Password::defaults(
+            fn () => Password::min(8)
+                ->letters()
+                ->mixedCase()
+                ->numbers()
+                ->symbols()
+        );
 
         // ---- LOGIN HISTORY ----
         Event::listen(Login::class, function (Login $event) {
