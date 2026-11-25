@@ -10,24 +10,10 @@ use App\Http\Controllers\SubsidyController;
 use App\Http\Controllers\SubsidyReleaseController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\LoginHistoryController;
-use App\Http\Controllers\GoogleController;
 use App\Http\Controllers\PasswordCodeController;
 
 Route::get('/', function () {
     return view('welcome');
-});
-
-// ---- GOOGLE SIGN-IN / SIGN-UP ----
-// Must stay OUTSIDE the auth group below: visitors aren't logged in yet.
-// 'guest' bounces already-logged-in users to the dashboard.
-Route::middleware('guest')->prefix('auth/google')->name('auth.google.')->group(function () {
-
-    Route::get('/redirect', [GoogleController::class, 'redirect'])
-        ->name('redirect');
-
-    Route::get('/callback', [GoogleController::class, 'callback'])
-        ->name('callback');
-
 });
 
 // ---- FORGOT PASSWORD (6-digit verification code) ----

@@ -1,4 +1,3 @@
-
 <?php
 
 namespace App\Providers;
@@ -12,20 +11,13 @@ use Illuminate\Validation\Rules\Password;
 
 class AppServiceProvider extends ServiceProvider
 {
-    /**
-     * Register any application services.
-     */
     public function register(): void
     {
         //
     }
 
-    /**
-     * Bootstrap any application services.
-     */
     public function boot(): void
     {
-        // Password validation defaults
         Password::defaults(
             fn () => Password::min(8)
                 ->letters()
@@ -34,12 +26,12 @@ class AppServiceProvider extends ServiceProvider
                 ->symbols()
         );
 
-        // ---- LOGIN HISTORY ----
+        // Login history
         Event::listen(Login::class, function (Login $event) {
             $history = LoginHistory::create([
-                'user_id'      => $event->user->getAuthIdentifier(),
-                'ip_address'   => request()->ip(),
-                'user_agent'   => substr((string) request()->userAgent(), 0, 1000),
+                'user_id' => $event->user->getAuthIdentifier(),
+                'ip_address' => request()->ip(),
+                'user_agent' => substr((string) request()->userAgent(), 0, 1000),
                 'logged_in_at' => now(),
             ]);
 
